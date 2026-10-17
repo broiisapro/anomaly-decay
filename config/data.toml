@@ -1,0 +1,17 @@
+# Pinned data sources for anomaly-decay.
+# OSAP release vintages: https://www.openassetpricing.com/ (pinned per release below).
+# Ken French files are revised monthly; `make refresh-french` is the only path that re-downloads
+# and updates the hashes and download date below.
+
+[osap]
+vintage = 202510
+portfolios = ["op", "deciles_ew", "deciles_vw"]
+raw_dir = "data/raw"
+
+[french]
+ff5_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_5_Factors_2x3_CSV.zip"
+umd_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_CSV.zip"
+pinned_dir = "data/pinned"
+downloaded_on = "2026-10-16"
+ff5_sha256 = "36756c5c2559648519ac4b22913d860c6afd865cfebce920e3e8927f8e2d10b7"
+umd_sha256 = "c06d1c2e9a5e4f6985879722f23c6bb585f46b34eaf3fcb681d4de887e353f3e"

@@ -6,7 +6,16 @@ export OPENBLAS_NUM_THREADS := 1
 export MKL_NUM_THREADS := 1
 export VECLIB_MAXIMUM_THREADS := 1
 
-.PHONY: lint types test reproduce-fixture
+.PHONY: fetch verify-hashes refresh-french lint types test reproduce-fixture
+
+fetch:
+	uv run python -m anomaly_decay.data.fetch
+
+verify-hashes:
+	uv run python -m anomaly_decay.data.fetch --verify
+
+refresh-french:
+	uv run python -m anomaly_decay.data.fetch --refresh-french
 
 lint:
 	uv run ruff check .

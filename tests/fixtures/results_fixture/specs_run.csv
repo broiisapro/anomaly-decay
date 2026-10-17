@@ -1,0 +1,13 @@
+spec,label,status,exploratory
+clear_only,Clear predictors only,ok,false
+ew_deciles,Equal-weighted decile long-short portfolios,ok,false
+ext_pub_after_2000,Extension: post-publication decay for predictors published after 2000 vs before,ok,false
+factor_adj,"FF5 + momentum adjusted returns (in-sample betas), from 1963-07",ok,false
+full_extension,"Extension: all predictors, returns through the vintage's last month",ok,false
+main,"Main: predictors published by 2013, returns through 2013-12",ok,false
+main_dk,"Driscoll-Kraay SE (Bartlett kernel, 12 lags)",ok,false
+main_twoway,Two-way clustered SE (month and predictor),ok,false
+normalized,Returns scaled by each predictor's in-sample mean,ok,false
+pubconv_alt,Post-publication from January of the publication year,ok,false
+start_1963,Excluding predictors whose sample starts before 1963,ok,false
+vw_deciles,Value-weighted decile long-short portfolios,ok,false

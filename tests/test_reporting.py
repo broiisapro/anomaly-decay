@@ -2,7 +2,8 @@
 
 The helpers decide where results live and how numbers are formatted, so the tests pin the
 repository-root path resolution (never the process working directory), the schema-typed
-read (with and without ``anomaly_decay.io.read_results``), and the pending-value rules.
+read (with and without ``anomaly_decay.io.read_results``), the pending-value rules, the
+table builders on the committed results fixture, and the structure of ``report/index.qmd``.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import polars as pl
 import pytest
 from anomaly_decay import io as io_module
 from anomaly_decay import reporting
+from anomaly_decay.schemas import RESULTS_SCHEMAS, validate_frame
+from IPython.display import Image, Markdown
 
 MAIN_CSV = (
     "spec,term,coef,se,t,n_predictors,n_obs\n"
@@ -20,6 +23,7 @@ MAIN_CSV = (
     "main,post_publication,-0.02,0.04,-0.5,100,4000\n"
 )
 QMD_PATH = reporting.REPO_ROOT / "report" / "index.qmd"
+FIXTURE_DIR = reporting.REPO_ROOT / "tests" / "fixtures" / "results_fixture"
 SECTIONS = (
     "# Question",
     "# Data",
@@ -217,6 +221,12 @@ def test_table_applies_per_column_formats() -> None:
     assert "| 0.150 | n/a |" in text
 
 
+def test_table_selects_requested_columns_in_order() -> None:
+    frame = pl.DataFrame({"spec": ["main"], "term": ["post_sample"], "coef": [0.15]})
+    text = reporting.table(frame, ["term", "coef"])
+    assert text.splitlines()[2] == "| post_sample | 0.15 |"
+
+
 def test_table_rejects_unknown_column() -> None:
     frame = pl.DataFrame({"spec": ["main"]})
     with pytest.raises(ValueError, match="columns not in frame"):
@@ -244,17 +254,30 @@ def test_figure_missing_returns_none(tmp_path: Path) -> None:
 
 def test_figure_block_notes_missing_figure(tmp_path: Path) -> None:
     block = reporting.figure_block("event_time", "Event time", where=tmp_path)
-    assert "Figure not generated" in block
-    assert "event_time" in block
-    assert "![" not in block
+    assert isinstance(block, Markdown)
+    assert "Figure not generated" in block.data
+    assert "event_time" in block.data
 
 
-def test_figure_block_embeds_existing_figure(tmp_path: Path) -> None:
+def test_figure_block_embeds_existing_raster_figure(tmp_path: Path) -> None:
     figures = tmp_path / "figures"
     figures.mkdir()
-    (figures / "coefplot.png").write_bytes(b"\x89PNG\r\n")
+    png = figures / "coefplot.png"
+    png.write_bytes(b"\x89PNG\r\n")
     block = reporting.figure_block("coefplot", "Robustness", where=tmp_path)
-    assert block == f"![Robustness]({(figures / 'coefplot.png').as_posix()})\n"
+    assert isinstance(block, Image)
+    assert block.filename == str(png)
+    assert block.alt == "Robustness"
+
+
+def test_figure_block_references_svg_only_figure_as_markdown(tmp_path: Path) -> None:
+    figures = tmp_path / "figures"
+    figures.mkdir()
+    svg = figures / "event_time.svg"
+    svg.write_text("<svg/>", encoding="utf-8")
+    block = reporting.figure_block("event_time", "Event time", where=tmp_path)
+    assert isinstance(block, Markdown)
+    assert f"![Event time]({svg.as_posix()})" in block.data
 
 
 def test_original_paper_values_are_pending() -> None:
@@ -286,3 +309,82 @@ def test_report_reads_results_only_through_reporting() -> None:
     text = QMD_PATH.read_text(encoding="utf-8")
     assert "read_csv" not in text
     assert "read_parquet" not in text
+
+
+def test_report_references_every_figure() -> None:
+    text = QMD_PATH.read_text(encoding="utf-8")
+    for name in ("event_time", "distribution", "coefplot"):
+        assert f'"{name}"' in text, f"figure not referenced: {name}"
+
+
+@pytest.mark.parametrize("name", sorted(RESULTS_SCHEMAS))
+def test_results_fixture_loads_against_its_schema(name: str) -> None:
+    frame = reporting.load(name, where=FIXTURE_DIR)
+    validate_frame(frame, RESULTS_SCHEMAS[name])
+
+
+def test_main_table_on_results_fixture() -> None:
+    main = reporting.load("main.csv", where=FIXTURE_DIR)
+    text = reporting.table(
+        main,
+        ["term", "coef", "se", "t", "n_predictors", "n_obs"],
+        ["Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
+        formats={
+            "coef": lambda value: reporting.num(value, 3),
+            "se": lambda value: reporting.num(value, 3),
+            "t": reporting.tstat,
+        },
+    )
+    assert "| post_sample | -0.333 | 0.155 | -2.14 | 12 | 5000 |" in text
+    assert "| post_publication | -0.666 | 0.200 | -3.33 | 12 | 5000 |" in text
+
+
+def test_decay_table_on_results_fixture() -> None:
+    decay = reporting.load("decay.csv", where=FIXTURE_DIR)
+    text = reporting.table(
+        decay,
+        ["method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors"],
+        formats={
+            "decay_pct": lambda value: reporting.pct(value, 1),
+            "se_pct": lambda value: reporting.num(value, 1),
+            "in_sample_mean": lambda value: reporting.num(value, 3),
+        },
+    )
+    assert "| pooled_ratio | post_publication | -60.0% | 18.0 | 1.110 | 12 |" in text
+    assert "| normalized | post_sample | -33.3% | 11.1 | 1.000 | 12 |" in text
+
+
+def test_robustness_and_extension_tables_on_results_fixture() -> None:
+    robustness = reporting.load("robustness.csv", where=FIXTURE_DIR)
+    extension = reporting.load("extension.csv", where=FIXTURE_DIR)
+    for frame in (robustness, extension):
+        text = reporting.table(
+            frame,
+            ["label", "term", "coef", "se", "t", "n_predictors", "n_obs"],
+            formats={
+                "coef": lambda value: reporting.num(value, 3),
+                "se": lambda value: reporting.num(value, 3),
+                "t": reporting.tstat,
+            },
+        )
+        assert len(text.splitlines()) == frame.height + 2
+    interaction = reporting.lookup(
+        extension, "coef", spec="ext_pub_after_2000", term="post_publication_x_pub_after_2000"
+    )
+    assert interaction == -0.222
+
+
+def test_specs_table_lists_every_specification_from_the_fixture() -> None:
+    specs = reporting.load("specs_run.csv", where=FIXTURE_DIR)
+    text = reporting.table(specs, ["spec", "label", "status", "exploratory"])
+    assert len(specs) == 12
+    for spec_id in specs["spec"].to_list():
+        assert f"| {spec_id} |" in text
+    assert "| no |" in text
+
+
+def test_coverage_table_on_results_fixture() -> None:
+    coverage = reporting.load("coverage.csv", where=FIXTURE_DIR)
+    text = reporting.table(coverage, ["item", "value"], ["Item", "Value"])
+    assert "| vintage | 202510 |" in text
+    assert "| n_predictors_op | 15 |" in text

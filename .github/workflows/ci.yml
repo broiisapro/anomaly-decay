@@ -53,4 +53,12 @@ jobs:
           version: "0.11.26"
           enable-cache: false
       - run: uv sync --frozen
+      - name: Quarto availability
+        run: |
+          if ! command -v quarto >/dev/null 2>&1; then
+            echo "::error::Quarto is not installed on this runner; install it with 'brew install --cask quarto'"
+            exit 1
+          fi
+          quarto --version
+          uv run quarto check jupyter
       - run: make reproduce-fixture

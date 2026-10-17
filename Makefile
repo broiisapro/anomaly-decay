@@ -19,12 +19,25 @@ SUPPLEMENT := config/predictor_dates_supplement.csv
 METADATA := $(PROCESSED_DIR)/predictors.parquet
 PANEL := $(PROCESSED_DIR)/panel.parquet
 
-# Offline fixture inputs and the throwaway results copy used by `report-fixture`.
+# Offline fixture inputs, the throwaway results copy used by `report-fixture`, and the
+# fixture pipeline outputs. Nothing here is ever written to `results/`.
 FIXTURE_RESULTS_DIR := tests/fixtures/results_fixture
 FIXTURE_REPORT_DIR := $(PROCESSED_DIR)/report-fixture
+FIXTURE_OSAP_DIR := tests/fixtures/data/osap
+FIXTURE_PINNED_DIR := tests/fixtures/data/pinned
+FIXTURE_SIGNAL_DOC := $(FIXTURE_OSAP_DIR)/$(VINTAGE)/signal_doc.csv
+FIXTURE_REFERENCE_PANEL := tests/fixtures/panel_fixture.parquet
+FIXTURE_PROCESSED_DIR := $(PROCESSED_DIR)/fixture
+FIXTURE_METADATA := $(FIXTURE_PROCESSED_DIR)/predictors.parquet
+FIXTURE_PANEL := $(FIXTURE_PROCESSED_DIR)/panel.parquet
+FIXTURE_RESULTS := $(FIXTURE_PROCESSED_DIR)/results
+FIXTURE_HASHES_BEFORE := $(FIXTURE_PROCESSED_DIR)/results-hashes.before.txt
+FIXTURE_HASHES_AFTER := $(FIXTURE_PROCESSED_DIR)/results-hashes.after.txt
+FIXTURE_HASH_CMD = cd "$(CURDIR)/$(FIXTURE_RESULTS)" && find . -type f | LC_ALL=C sort | xargs shasum -a 256
 
 .PHONY: fetch verify-hashes refresh-french metadata panel estimate descriptive \
         figures report report-placeholder report-fixture reproduce reproduce-fixture \
+        fixture-metadata fixture-panel fixture-panel-check fixture-results \
         lint types test
 
 fetch:
@@ -79,11 +92,51 @@ report-fixture:
 	uv run python -m anomaly_decay.figures.coefplot --results-dir $(FIXTURE_REPORT_DIR)
 	ANOMALY_DECAY_RESULTS=$(FIXTURE_REPORT_DIR) uv run quarto render report
 
-# Offline gate: fixture manifest hashes, panel schema, fixture report, output files.
+# Offline fixture pipeline: the production CLIs on committed fixture inputs, writing
+# under data/processed/fixture/ only.
+fixture-metadata:
+	mkdir -p "$(FIXTURE_PROCESSED_DIR)"
+	rm -f "$(FIXTURE_METADATA)"
+	uv run python -m anomaly_decay.data.metadata --signal-doc $(FIXTURE_SIGNAL_DOC) \
+		$(if $(wildcard $(SUPPLEMENT)),--supplement $(SUPPLEMENT)) \
+		--out $(FIXTURE_METADATA)
+
+fixture-panel: fixture-metadata
+	rm -f "$(FIXTURE_PANEL)"
+	uv run python -m anomaly_decay.panel.build --data-dir $(FIXTURE_OSAP_DIR) \
+		--pinned-dir $(FIXTURE_PINNED_DIR) --vintage $(VINTAGE) \
+		--metadata $(FIXTURE_METADATA) --portfolios $(PORTFOLIOS) --out $(FIXTURE_PANEL)
+
+# The production panel must equal the independent reference panel exactly (values, dtypes,
+# row order) before any estimate runs on it.
+fixture-panel-check: fixture-panel
+	uv run python -c "import polars as pl; from polars.testing import assert_frame_equal; assert_frame_equal(pl.read_parquet('$(FIXTURE_PANEL)'), pl.read_parquet('$(FIXTURE_REFERENCE_PANEL)'), check_exact=True); print('panel: exact match with $(FIXTURE_REFERENCE_PANEL)')"
+
+fixture-results: fixture-panel-check
+	rm -rf "$(FIXTURE_RESULTS)"
+	uv run python -m anomaly_decay.estimate.main --panel $(FIXTURE_PANEL) \
+		--specs $(SPECS) --results-dir $(FIXTURE_RESULTS) --print-headline
+	uv run python -m anomaly_decay.estimate.descriptive --panel $(FIXTURE_PANEL) \
+		--metadata $(FIXTURE_METADATA) --vintage $(VINTAGE) --results-dir $(FIXTURE_RESULTS)
+	uv run python -m anomaly_decay.figures.event_time --results-dir $(FIXTURE_RESULTS)
+	uv run python -m anomaly_decay.figures.distribution --results-dir $(FIXTURE_RESULTS)
+	uv run python -m anomaly_decay.figures.coefplot --results-dir $(FIXTURE_RESULTS)
+
+# Offline end-to-end gate, never writing to `results/`: fixture manifest verify ->
+# metadata -> panel (asserted equal to the reference panel) -> estimate -> descriptive ->
+# figures -> the same result stages a second time with every file under
+# data/processed/fixture/results/ required to hash byte-identically -> the committed
+# expectations (panel, expected main.csv to 1e-10) -> report rendered from the fixture
+# results with both output files present.
 reproduce-fixture:
 	uv run python -m anomaly_decay.data.fetch --verify --manifest-scope fixture
-	uv run python -c "import polars as pl; from anomaly_decay.schemas import PANEL_KEY, PANEL_SCHEMA, validate_frame; validate_frame(pl.read_parquet('tests/fixtures/panel_fixture.parquet'), PANEL_SCHEMA, key=PANEL_KEY)"
-	$(MAKE) report-fixture
+	$(MAKE) fixture-results
+	$(FIXTURE_HASH_CMD) > "$(CURDIR)/$(FIXTURE_HASHES_BEFORE)"
+	$(MAKE) fixture-results
+	$(FIXTURE_HASH_CMD) > "$(CURDIR)/$(FIXTURE_HASHES_AFTER)"
+	cmp "$(CURDIR)/$(FIXTURE_HASHES_BEFORE)" "$(CURDIR)/$(FIXTURE_HASHES_AFTER)"
+	uv run pytest -q tests/test_reproduce_fixture.py
+	ANOMALY_DECAY_RESULTS=$(FIXTURE_RESULTS) uv run quarto render report
 	test -f report/_site/index.html
 	test -f report/_site/index.pdf
 

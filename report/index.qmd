@@ -1,0 +1,102 @@
+---
+title: "anomaly-decay — placeholder report"
+---
+
+```{python}
+#| echo: false
+import os
+from pathlib import Path
+
+import polars as pl
+from IPython.display import Markdown
+
+repo_root = Path(os.environ.get("QUARTO_PROJECT_DIR", ".")).resolve().parent
+results_setting = os.environ.get("ANOMALY_DECAY_RESULTS", "results")
+results_dir = Path(results_setting)
+if not results_dir.is_absolute():
+    results_dir = repo_root / results_dir
+
+main = pl.read_csv(results_dir / "main.csv")
+post_sample = main.filter(pl.col("term") == "post_sample")["coef"][0]
+post_publication = main.filter(pl.col("term") == "post_publication")["coef"][0]
+
+
+def markdown_table(frame):
+    header = "| " + " | ".join(frame.columns) + " |"
+    divider = "|" + "|".join("---" for _ in frame.columns) + "|"
+    rows = [
+        "| " + " | ".join("" if value is None else f"{value}" for value in row) + " |"
+        for row in frame.iter_rows()
+    ]
+    return Markdown("\n".join([header, divider, *rows]))
+```
+
+# Question
+
+Do long-short anomaly returns fall after the original sample ends, and fall further after
+publication? McLean and Pontiff (2016, *Journal of Finance* 71(1), 5–32) report falls of
+about 26% out-of-sample and 58% post-publication across 97 predictors. This project
+rebuilds that result on the open Chen–Zimmermann *Open Source Asset Pricing* portfolios
+and extends it through the latest pinned vintage.
+
+This page is the placeholder report for Epic 00: it proves the toolchain renders every
+number from `results/` only. The real prose, figures and tables arrive with the estimation
+epics.
+
+# Data
+
+Placeholder. The pinned OSAP release vintage and the Ken French FF5 + momentum factors are
+fetched, cached and hash-verified by the pipeline; `results/coverage.csv` will state the
+vintage, first and last month and the predictor counts.
+
+# Method
+
+Placeholder. Long-short portfolios are labelled
+`in_sample`, `post_sample` and `post_publication` using the documented window rules;
+pooled panel regressions with predictor fixed effects and month-clustered standard errors
+estimate the decay (see `docs/architecture.md` §4.6–§4.8).
+
+# Main result vs original
+
+The placeholder `main.csv` read from `results/`:
+
+```{python}
+markdown_table(main)
+```
+
+The placeholder post-sample coefficient is `{python} f"{post_sample:.4f}"` percent per
+month and the placeholder post-publication coefficient is
+`{python} f"{post_publication:.4f}"` percent per month. Against the original paper's
+≈26% and ≈58% decay, the real comparison appears here once the estimation epic runs.
+
+# Robustness
+
+Placeholder. The pre-registered specification list (`config/specifications.yaml`) covers
+two-way clustering, Driscoll–Kraay, the alternative publication convention, the post-1963
+universe, clear predictors, equal- and value-weighted deciles, factor-adjusted returns and
+normalized returns.
+
+# Extension
+
+Placeholder. The extension reruns the main specification on all predictors through the
+vintage's last month, including the post-2000 versus pre-2000 publication split.
+
+# Deviations from the original paper
+
+Placeholder. Known deviations are documented in `docs/epic-00-foundation.md` and will be
+restated here: OSAP portfolio construction instead of the authors' own data, publication
+year only (no month), and a subset of the original predictor universe.
+
+# Limitations
+
+Placeholder. The 15-predictor fixture is a development aid, not evidence; full-sample
+results, standard errors and their sensitivity are reported only after the estimation
+epics, and no specification is added after seeing results without being labelled
+exploratory.
+
+# Reproduction
+
+From a clean clone: `uv sync --frozen`, then `make reproduce-fixture` (offline, fixture
+data and placeholder report) or `make reproduce` (downloads the pinned vintage, estimates
+the full pipeline and renders this report from `results/`). Rendering uses Quarto
+1.10.x with its bundled Typst for the PDF.

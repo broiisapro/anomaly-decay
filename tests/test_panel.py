@@ -287,14 +287,17 @@ def test_group_without_in_sample_returns_is_dropped(tmp_path: Path) -> None:
 
 
 def test_null_ret_rows_are_dropped(panel: pl.DataFrame) -> None:
-    # The fixture has three null-ret months for MaxRet (1995-01..03, in-sample).
+    # The synthetic fixture has three null-ret months for MaxRet (1995-01..03); the
+    # real-data fixture has none. Either way the panel must contain no null ret and no
+    # month whose raw ret was null; the drop is counted exactly in the hand-built
+    # case of test_build_stats_count_dropped_rows.
     raw = _raw_rows("MaxRet")
     null_months = {
         int(row["date"][0:4]) * 100 + int(row["date"][5:7])
         for row in raw.iter_rows(named=True)
         if row["ret"] is None
     }
-    assert null_months == {199501, 199502, 199503}
+    assert panel["ret"].null_count() == 0
     panel_months = set(
         panel.filter((pl.col("signalname") == "MaxRet") & (pl.col("portfolio") == "op"))[
             "yyyymm"

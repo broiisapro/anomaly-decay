@@ -14,12 +14,15 @@ import math
 import os
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import polars as pl
 import yaml
 
 from anomaly_decay.schemas import RESULTS_SCHEMAS
+
+if TYPE_CHECKING:
+    from IPython.display import Image, Markdown
 
 __all__ = [
     "NA_TEXT",
@@ -40,7 +43,8 @@ REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 RESULTS_ENV_VAR: str = "ANOMALY_DECAY_RESULTS"
 DEFAULT_RESULTS_DIRNAME: str = "results"
 ORIGINAL_PAPER_PATH: Path = REPO_ROOT / "config" / "original_paper.yaml"
-FIGURE_EXTENSIONS: tuple[str, ...] = ("png", "svg")
+RASTER_EXTENSIONS: tuple[str, ...] = ("png", "jpg", "jpeg", "gif")
+FIGURE_EXTENSIONS: tuple[str, ...] = (*RASTER_EXTENSIONS, "svg")
 NA_TEXT: str = "n/a"
 
 
@@ -176,11 +180,12 @@ def table(
             f"headers ({len(headers)}) and columns ({len(columns)}) must have equal length"
         )
     formatters = formats if formats is not None else {}
+    view = df.select(columns)
     lines = [
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _ in columns) + " |",
     ]
-    for row in df.iter_rows():
+    for row in view.iter_rows():
         cells = []
         for column, value in zip(columns, row, strict=True):
             formatter = formatters.get(column)
@@ -192,8 +197,8 @@ def table(
 def figure(name: str, *, where: Path | None = None) -> Path | None:
     """Path of a generated figure under ``<results>/figures``, or ``None`` if absent.
 
-    ``.png`` is preferred because it embeds in both HTML and Typst PDF; ``.svg`` is the
-    fallback.
+    Raster files are preferred because :func:`figure_block` can embed them in both HTML
+    and Typst PDF; ``.svg`` is the fallback.
     """
     base = where if where is not None else results_dir()
     for extension in FIGURE_EXTENSIONS:
@@ -203,17 +208,31 @@ def figure(name: str, *, where: Path | None = None) -> Path | None:
     return None
 
 
-def figure_block(name: str, caption: str, *, where: Path | None = None) -> str:
-    """Markdown block embedding a figure, or a visible note when it was not generated."""
+def figure_block(name: str, caption: str, *, where: Path | None = None) -> Image | Markdown:
+    """Displayable figure block: the image when it exists, else a visible note.
+
+    Raster images are embedded with :class:`IPython.display.Image`, which renders in HTML
+    and Typst PDF without depending on the output directory's relative layout; an
+    SVG-only file is referenced as Markdown. A missing figure is a warning callout, so the
+    report never fails to render because a figure stage has not run.
+    """
+    from IPython.display import Image as IpyImage
+    from IPython.display import Markdown as IpyMarkdown
+
+    markdown = cast("Callable[[str], Markdown]", IpyMarkdown)
+    image = cast("Callable[..., Image]", IpyImage)
+
     path = figure(name, where=where)
     if path is None:
-        return (
+        return markdown(
             "::: {.callout-warning}\n"
             f"Figure not generated: `{name}` (expected under `figures/` in the results "
             "directory).\n"
             ":::\n"
         )
-    return f"![{caption}]({path.as_posix()})\n"
+    if path.suffix.lstrip(".").lower() in RASTER_EXTENSIONS:
+        return image(filename=str(path), alt=caption)
+    return markdown(f"![{caption}]({path.as_posix()})\n")
 
 
 def original_paper(path: Path | None = None) -> dict[str, Any]:

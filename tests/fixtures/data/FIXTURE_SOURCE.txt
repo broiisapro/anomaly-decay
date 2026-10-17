@@ -1,3 +1,9 @@
-synthetic
+osap-202510
 predictors: 15
-seed: 20261016; distribution: normal(0.5, 4.0) percent per month; metadata: https://raw.githubusercontent.com/OpenSourceAP/CrossSection/master/SignalDoc.csv
+source: OSAP release 202510 canonical cache (port == LS rows), all months
+source-sha256: data/raw/202510/signal_doc.csv 55ce85de01ffa9f5ec4a9b7721ccdaa2f0c4cb1a26e4ea6a8f81fb1d74e1fc41
+source-sha256: data/raw/202510/port_op.csv a8e5a7b27e42d8c8b303e563afdf8cae948567438ab7d2153b1f3c6e55a4e86f
+source-sha256: data/raw/202510/port_deciles_ew.csv 88591f97d2e4963e810477f9afa0565c78e1aef69405707040404b4dc7f454e5
+source-sha256: data/raw/202510/port_deciles_vw.csv 3f5a3ccccb66777b883e1d2c934a556bf56be8f9e3d0e8fbe21ceb6945efdba7
+source-sha256: data/pinned/ff5_monthly.csv e5c4de176a0831a3d77dc6146bd0dd6718b5e36edbb2afd9fae29021f6c06f8c
+source-sha256: data/pinned/umd_monthly.csv feca2b9566fdc24e9796fcfd0d7bf761dd683eaa3a8cccaff0bd6161a61b44cb

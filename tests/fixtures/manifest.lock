@@ -1,8 +1,7 @@
-8805b6b830a5c339feaea8c39e8d8bdb640cf599d915983fc35a5faf5bceb2f2  tests/fixtures/data/FIXTURE_SOURCE.txt  182
-33f60c6119f5f46c15d90db520d01744aaf6012ed6826d23d1905f7edd9287b3  tests/fixtures/data/osap/202510/port_deciles_ew.csv  649802
-60fd60fcd054368dc504a387da3ff1a59099ba1b97cb16899690602c48d7d660  tests/fixtures/data/osap/202510/port_deciles_vw.csv  649714
-2b5a26c1112ec45c39a406aba81f3b9a5f2df17561eb063b484897fcdcfddd14  tests/fixtures/data/osap/202510/port_op.csv  649962
+b79574efdcd9c3ac04a660401f96dec647457c1ccdf49fc0855af6b40d4c21e5  tests/fixtures/data/FIXTURE_SOURCE.txt  768
+ec051f67db00805073e9db7e6ed693348685f20c064a04a3f87ef067eb9694d3  tests/fixtures/data/osap/202510/port_deciles_ew.csv  706404
+7044b429ca5fef7b6f4dae78ae13fcb2f5f3286ae7a06a3e243bbfc0555b627d  tests/fixtures/data/osap/202510/port_deciles_vw.csv  708606
+eb26251489f1cb8b37f35b93b60e0c0f1bdcf94019b6a3b524a14475a0ede8cf  tests/fixtures/data/osap/202510/port_op.csv  714654
 309925792d9fed92dbf1865f00e05d4e381f4f9b6e9bc7d9ca5cf798c85a6249  tests/fixtures/data/osap/202510/signal_doc.csv  1278
 e5c4de176a0831a3d77dc6146bd0dd6718b5e36edbb2afd9fae29021f6c06f8c  tests/fixtures/data/pinned/ff5_monthly.csv  29333
 feca2b9566fdc24e9796fcfd0d7bf761dd683eaa3a8cccaff0bd6161a61b44cb  tests/fixtures/data/pinned/umd_monthly.csv  14698
-f6c055120bad7afe97c16e23e0f49bce0982269026605a955e8064bd661cf415  tests/fixtures/data/signaldoc_raw.csv  181712

@@ -5,8 +5,8 @@ in ``config/specifications.yaml``. Values are plausible in sign and scale but
 unmistakably fictional: every coefficient in ``main.csv``, ``robustness.csv`` and
 ``extension.csv`` is an integer multiple of :data:`FICTIONAL_UNIT`, as are the
 per-predictor mean returns in ``predictor_summary.csv``. The script is seeded and
-uses :func:`anomaly_decay.io.write_csv_canonical`, so two runs produce byte-identical
-files (asserted in ``tests/test_results_fixture.py``).
+uses :func:`anomaly_decay.io.write_results`, so two runs produce byte-identical files
+(asserted in ``tests/test_results_fixture.py``).
 """
 
 from __future__ import annotations
@@ -18,25 +18,13 @@ from pathlib import Path
 
 import polars as pl
 from anomaly_decay.config import Spec, load_specifications
-from anomaly_decay.io import write_csv_canonical
+from anomaly_decay.io import write_results
 from anomaly_decay.schemas import RESULTS_SCHEMAS
 
 FICTIONAL_UNIT = 0.111
 """Marker for fictional coefficients and per-predictor mean returns."""
 
 SEED = 202510
-
-_SORT_KEYS: dict[str, tuple[str, ...]] = {
-    "main.csv": ("spec", "term"),
-    "decay.csv": ("spec", "method", "term"),
-    "robustness.csv": ("spec", "term"),
-    "extension.csv": ("spec", "term"),
-    "specs_run.csv": ("spec",),
-    "predictor_summary.csv": ("signalname", "window"),
-    "event_time.csv": ("anchor", "event_month"),
-    "coverage.csv": ("item",),
-}
-"""Mirror of ``anomaly_decay.io.RESULTS_SORT_KEYS`` (issue #21)."""
 
 _HERE = Path(__file__).resolve()
 DEFAULT_OUT_DIR = _HERE.parent / "results_fixture"
@@ -351,9 +339,7 @@ def build_results_fixture(out_dir: Path) -> list[Path]:
     paths = []
     for name, rows in frames.items():
         frame = pl.DataFrame(rows, schema=RESULTS_SCHEMAS[name])
-        path = out_dir / name
-        write_csv_canonical(frame, path, sort_by=_SORT_KEYS[name])
-        paths.append(path)
+        paths.append(write_results(frame, name, out_dir))
     return paths
 
 

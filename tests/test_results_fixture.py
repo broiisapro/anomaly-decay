@@ -10,6 +10,7 @@ from types import ModuleType
 import polars as pl
 import pytest
 from anomaly_decay.config import load_specifications
+from anomaly_decay.io import read_results
 from anomaly_decay.schemas import RESULTS_SCHEMAS, validate_frame
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -42,7 +43,7 @@ def _builder() -> ModuleType:
 
 
 def _read(name: str) -> pl.DataFrame:
-    return pl.read_csv(RESULTS_DIR / name, schema=RESULTS_SCHEMAS[name])
+    return read_results(name, RESULTS_DIR)
 
 
 @pytest.mark.parametrize("name", sorted(RESULTS_SCHEMAS))
@@ -50,7 +51,7 @@ def test_file_validates_against_results_schema(name: str) -> None:
     path = RESULTS_DIR / name
     assert path.is_file()
     schema = RESULTS_SCHEMAS[name]
-    frame = pl.read_csv(path, schema=schema)
+    frame = _read(name)
     assert frame.columns == list(schema)
     validate_frame(frame, schema)
 

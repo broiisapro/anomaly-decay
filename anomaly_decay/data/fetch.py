@@ -7,16 +7,24 @@ detect Drive's "quota exceeded" HTML page. Canonical copies are written to
 O16). ``data/manifest.lock`` records ``<sha256>  <path relative to repo root>  <bytes>``
 lines sorted by path.
 
+The cache is verified before it is trusted: a file whose size and hash match its manifest
+entry is never re-downloaded (``cached: <path>``), and a fresh download that disagrees
+with an existing entry is kept as ``<path>.rejected``, fails the run and leaves the
+manifest untouched. Entries are added when a file has none (first-time cache population);
+changing an existing entry requires ``--update-manifest``.
+
 CLI::
 
     python -m anomaly_decay.data.fetch [--osap] [--french] [--refresh-french]
-                                       [--verify] [--manifest-scope {all,pinned,fixture}]
+                                       [--verify] [--update-manifest]
+                                       [--manifest-scope {all,pinned,fixture}]
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
 import sys
 import time
@@ -58,6 +66,8 @@ MIN_PORT_ROWS = 1000
 MIN_SIGNAL_DOC_ROWS = 100
 MAX_ATTEMPTS = 5
 MANIFEST_NAME = "data/manifest.lock"
+# Working files that must never enter a manifest scan.
+IGNORED_SUFFIXES: tuple[str, ...] = (".rejected", ".tmp")
 
 
 class FetchError(RuntimeError):
@@ -136,45 +146,209 @@ def _validate_signal_doc(df: pl.DataFrame) -> pl.DataFrame:
     return df
 
 
+@dataclass(frozen=True)
+class ManifestEntry:
+    """One line of a manifest: hash, repo-root-relative path, size in bytes."""
+
+    sha256: str
+    path: str
+    size: int
+
+
+def read_manifest(path: Path) -> list[ManifestEntry]:
+    """Read a manifest file into entries; malformed lines raise :class:`FetchError`."""
+    path = Path(path)
+    if not path.is_file():
+        raise FetchError(f"manifest not found: {path}")
+    entries: list[ManifestEntry] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = line.split("  ")
+        if len(parts) != 3:
+            raise FetchError(f"{path}:{number}: malformed manifest line: {line!r}")
+        sha256, rel_path, size_text = parts
+        try:
+            size = int(size_text)
+        except ValueError as exc:
+            raise FetchError(f"{path}:{number}: bad byte count: {size_text!r}") from exc
+        entries.append(ManifestEntry(sha256=sha256, path=rel_path, size=size))
+    return entries
+
+
+def manifest_path_for(cfg: DataConfig, scope: str) -> Path:
+    """Manifest file for a scope: ``all``/``pinned`` use ``data/manifest.lock``."""
+    if scope in ("all", "pinned"):
+        return cfg.root / MANIFEST_NAME
+    if scope == "fixture":
+        return cfg.root / "tests" / "fixtures" / "manifest.lock"
+    raise ValueError(f"unknown manifest scope: {scope!r}")
+
+
+def _manifest_text(entries: Sequence[ManifestEntry]) -> str:
+    return "".join(
+        f"{entry.sha256}  {entry.path}  {entry.size}\n"
+        for entry in sorted(entries, key=lambda item: item.path)
+    )
+
+
+class ManifestUpdater:
+    """Stage first-time additions and explicit updates to ``data/manifest.lock``.
+
+    Entries that already exist are never changed unless *update* is true (the
+    ``--update-manifest`` flag): a downloaded file that disagrees with its entry is kept
+    as ``<path>.rejected`` and the run fails. Files that had no entry are added. Nothing
+    is written until :meth:`save` is called.
+    """
+
+    def __init__(self, manifest_path: Path, root: Path, *, update: bool = False) -> None:
+        self.manifest_path = Path(manifest_path)
+        self.root = Path(root)
+        self.update = update
+        self.added: list[str] = []
+        self.updated: list[str] = []
+        self.entries: dict[str, ManifestEntry] = {}
+        if self.manifest_path.is_file():
+            for entry in read_manifest(self.manifest_path):
+                self.entries[entry.path] = entry
+
+    def entry(self, rel_path: str) -> ManifestEntry | None:
+        """Current entry for *rel_path*, or None when the file has no entry."""
+        return self.entries.get(rel_path)
+
+    def is_cached(self, rel_path: str) -> bool:
+        """True when the file exists and its size and hash match its manifest entry."""
+        entry = self.entries.get(rel_path)
+        if entry is None:
+            return False
+        path = self.root / rel_path
+        return (
+            path.is_file()
+            and path.stat().st_size == entry.size
+            and sha256_file(path) == entry.sha256
+        )
+
+    def adopt(self, rel_path: str) -> ManifestEntry:
+        """Record an existing file that has no manifest entry (first-time cache)."""
+        path = self.root / rel_path
+        entry = ManifestEntry(sha256_file(path), rel_path, path.stat().st_size)
+        self.entries[rel_path] = entry
+        self.added.append(rel_path)
+        return entry
+
+    def accept(self, rel_path: str, tmp_path: Path, dest: Path, *, force: bool = False) -> str:
+        """Validate a freshly written temporary file and move it into place.
+
+        Returns ``added`` (new to the manifest), ``updated`` (entry rewritten) or
+        ``unchanged``. Without ``update``/``force``, a file that disagrees with an
+        existing entry is kept as ``<dest>.rejected`` and :class:`FetchError` is raised.
+        """
+        sha = sha256_file(tmp_path)
+        size = tmp_path.stat().st_size
+        entry = self.entries.get(rel_path)
+        if (
+            entry is not None
+            and not (self.update or force)
+            and (entry.sha256 != sha or entry.size != size)
+        ):
+            rejected = dest.with_name(dest.name + ".rejected")
+            os.replace(tmp_path, rejected)
+            raise FetchError(
+                f"{rel_path}: SHA-256 mismatch against the manifest: expected "
+                f"{entry.sha256}, got {sha}; the download was kept as "
+                f"{rejected.relative_to(self.root).as_posix()} and the manifest was "
+                "not changed (re-run with --update-manifest to accept a revised file)"
+            )
+        os.replace(tmp_path, dest)
+        if entry is None:
+            self.entries[rel_path] = ManifestEntry(sha, rel_path, size)
+            self.added.append(rel_path)
+            return "added"
+        if entry.sha256 != sha or entry.size != size:
+            self.entries[rel_path] = ManifestEntry(sha, rel_path, size)
+            self.updated.append(rel_path)
+            return "updated"
+        return "unchanged"
+
+    def save(self) -> Path | None:
+        """Write the manifest when anything was added or updated; else return None."""
+        if not self.added and not self.updated:
+            return None
+        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        self.manifest_path.write_text(_manifest_text(list(self.entries.values())), encoding="utf-8")
+        return self.manifest_path
+
+
 def fetch_osap(
     cfg: DataConfig,
     *,
-    openap_factory: Callable[[int], Any] = _default_openap,
+    openap_factory: Callable[[int], Any] | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    updater: ManifestUpdater | None = None,
 ) -> list[Path]:
-    """Download the OSAP signal doc and configured portfolios; write canonical CSVs.
+    """Fetch the OSAP signal doc and configured portfolios into the canonical cache.
 
-    Returns the canonical file paths written under ``data/raw/<vintage>/``. Validation and
-    retries happen per call; a frame that fails validation (wrong columns, too few rows,
-    non-numeric ``ret``) raises :class:`FetchError`.
+    Returns the paths written by this call. With *updater*, a file whose cached copy
+    matches its manifest entry is skipped and reported as ``cached: <path>``; an existing
+    file without an entry is hashed and recorded; every other file is downloaded,
+    validated and written atomically. A frame that fails validation (wrong columns, too
+    few rows, non-numeric ``ret``) raises :class:`FetchError`.
     """
-    api = _retry(
-        lambda: openap_factory(cfg.osap.vintage),
-        sleep=sleep,
-        description=f"open OSAP release {cfg.osap.vintage}",
-    )
     osap_dir = cfg.osap.raw_dir / str(cfg.osap.vintage)
-    written: list[Path] = []
+    targets: list[tuple[str, Path]] = [("signal_doc", osap_dir / "signal_doc.csv")]
+    targets += [(f"port_{name}", osap_dir / f"port_{name}.csv") for name in cfg.osap.portfolios]
 
-    def load_signal_doc() -> pl.DataFrame:
-        return _validate_signal_doc(api.dl_signal_doc(df_backend="polars"))
+    todo: list[tuple[str, Path]] = []
+    for label, dest in targets:
+        if updater is None:
+            todo.append((label, dest))
+            continue
+        rel = dest.relative_to(cfg.root).as_posix()
+        if updater.is_cached(rel):
+            print(f"cached: {rel}")
+            continue
+        if dest.is_file() and updater.entry(rel) is None:
+            updater.adopt(rel)
+            print(f"adopted: {rel} (existing file had no manifest entry)")
+            continue
+        todo.append((label, dest))
 
-    doc = _retry(load_signal_doc, sleep=sleep, description="OSAP signal doc")
-    doc_path = osap_dir / "signal_doc.csv"
-    write_csv_canonical(doc, doc_path, sort_by=["Acronym"])
-    written.append(doc_path)
-
-    for name in cfg.osap.portfolios:
-
-        def load_port(portfolio: str = name) -> pl.DataFrame:
-            return _validate_port(api.dl_port(portfolio, df_backend="polars"), portfolio)
-
-        frame = _retry(load_port, sleep=sleep, description=f"OSAP portfolio {name}")
-        path = osap_dir / f"port_{name}.csv"
-        write_csv_canonical(
-            frame.select(PORT_COLUMNS), path, sort_by=["signalname", "port", "date"]
+    api: Any = None
+    if todo:
+        factory = _default_openap if openap_factory is None else openap_factory
+        api = _retry(
+            lambda: factory(cfg.osap.vintage),
+            sleep=sleep,
+            description=f"open OSAP release {cfg.osap.vintage}",
         )
-        written.append(path)
+
+    written: list[Path] = []
+    for label, dest in todo:
+        if label == "signal_doc":
+            frame = _retry(
+                lambda: _validate_signal_doc(api.dl_signal_doc(df_backend="polars")),
+                sleep=sleep,
+                description="OSAP signal doc",
+            )
+            sort_by = ["Acronym"]
+        else:
+            name = label.removeprefix("port_")
+
+            def load_port(portfolio: str = name) -> pl.DataFrame:
+                return _validate_port(api.dl_port(portfolio, df_backend="polars"), portfolio)
+
+            frame = _retry(load_port, sleep=sleep, description=f"OSAP portfolio {name}")
+            frame = frame.select(PORT_COLUMNS)
+            sort_by = ["signalname", "port", "date"]
+        rel = dest.relative_to(cfg.root).as_posix()
+        tmp = dest.with_name(dest.name + ".tmp")
+        write_csv_canonical(frame, tmp, sort_by=sort_by)
+        if updater is not None:
+            updater.accept(rel, tmp, dest)
+        else:
+            os.replace(tmp, dest)
+        print(f"wrote {rel}")
+        written.append(dest)
     return written
 
 
@@ -218,23 +392,40 @@ def fetch_french(
     refresh: bool = False,
     session: requests.Session | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    updater: ManifestUpdater | None = None,
 ) -> list[Path]:
     """Download both Ken French zips, verify (or refresh) their SHA-256, write canonical CSVs.
 
-    With ``refresh=False`` a hash mismatch against ``config/data.toml`` raises
-    :class:`FetchError` (the library revises its files monthly). With ``refresh=True`` the
-    downloaded bytes win and ``config/data.toml`` is updated. Raw zips are cached under
-    ``data/raw/ff/<downloaded_on>/``; canonical monthly CSVs are written to ``data/pinned/``.
+    With *updater* and ``refresh=False``, a plan whose canonical CSV matches its manifest
+    entry is skipped and reported as ``cached: <path>``. With ``refresh=False`` a hash
+    mismatch against ``config/data.toml`` raises :class:`FetchError` (the library revises
+    its files monthly). With ``refresh=True`` the downloaded bytes win, the manifest
+    entries for the two zips and canonical CSVs are updated even without
+    ``--update-manifest`` (this is the explicit refresh path), and ``config/data.toml``
+    is updated. Raw zips are cached under ``data/raw/ff/<downloaded_on>/``; canonical
+    monthly CSVs are written to ``data/pinned/``.
     """
-    http = session if session is not None else requests.Session()
     downloaded_on = time.strftime("%Y-%m-%d") if refresh else cfg.french.downloaded_on
     plans = (
         ("ff5", cfg.french.ff5_url, cfg.french.ff5_sha256, FF5_RENAME),
         ("umd", cfg.french.umd_url, cfg.french.umd_sha256, UMD_RENAME),
     )
+    canonical = {name: cfg.french.pinned_dir / f"{name}_monthly.csv" for name, *_ in plans}
+
+    pending: list[tuple[str, str, str, dict[str, str]]] = []
+    for name, url, expected, rename in plans:
+        rel = canonical[name].relative_to(cfg.root).as_posix()
+        if updater is not None and not refresh and updater.is_cached(rel):
+            print(f"cached: {rel}")
+            continue
+        pending.append((name, url, expected, rename))
+
+    if not pending:
+        return []
+    http = session if session is not None else requests.Session()
     hashes: dict[str, str] = {}
     written: list[Path] = []
-    for name, url, expected, rename in plans:
+    for name, url, expected, rename in pending:
         content = _retry(
             partial(_download_bytes, http, url),
             sleep=sleep,
@@ -252,12 +443,22 @@ def fetch_french(
             frame = parse_french_zip(content, rename)
         except FrenchParseError as exc:
             raise FetchError(f"Ken French {name} zip: {exc}") from exc
-        canonical = cfg.french.pinned_dir / f"{name}_monthly.csv"
-        write_csv_canonical(frame, canonical, sort_by=["yyyymm"])
+        dest = canonical[name]
+        tmp = dest.with_name(dest.name + ".tmp")
+        write_csv_canonical(frame, tmp, sort_by=["yyyymm"])
         zip_path = cfg.osap.raw_dir / "ff" / downloaded_on / f"{name}.zip"
         zip_path.parent.mkdir(parents=True, exist_ok=True)
-        zip_path.write_bytes(content)
-        written.append(canonical)
+        zip_tmp = zip_path.with_name(zip_path.name + ".tmp")
+        zip_tmp.write_bytes(content)
+        if updater is not None:
+            updater.accept(dest.relative_to(cfg.root).as_posix(), tmp, dest, force=refresh)
+            updater.accept(
+                zip_path.relative_to(cfg.root).as_posix(), zip_tmp, zip_path, force=refresh
+            )
+        else:
+            os.replace(tmp, dest)
+            os.replace(zip_tmp, zip_path)
+        written.append(dest)
 
     if refresh:
         update_pinned_metadata(
@@ -267,15 +468,6 @@ def fetch_french(
             downloaded_on=downloaded_on,
         )
     return written
-
-
-@dataclass(frozen=True)
-class ManifestEntry:
-    """One line of a manifest: hash, repo-root-relative path, size in bytes."""
-
-    sha256: str
-    path: str
-    size: int
 
 
 @dataclass(frozen=True)
@@ -291,36 +483,6 @@ class VerifyResult:
     def ok(self) -> bool:
         """True when no present file mismatched and no committed file is missing."""
         return not self.mismatches and not self.missing
-
-
-def read_manifest(path: Path) -> list[ManifestEntry]:
-    """Read a manifest file into entries; malformed lines raise :class:`FetchError`."""
-    path = Path(path)
-    if not path.is_file():
-        raise FetchError(f"manifest not found: {path}")
-    entries: list[ManifestEntry] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        parts = line.split("  ")
-        if len(parts) != 3:
-            raise FetchError(f"{path}:{number}: malformed manifest line: {line!r}")
-        sha256, rel_path, size_text = parts
-        try:
-            size = int(size_text)
-        except ValueError as exc:
-            raise FetchError(f"{path}:{number}: bad byte count: {size_text!r}") from exc
-        entries.append(ManifestEntry(sha256=sha256, path=rel_path, size=size))
-    return entries
-
-
-def manifest_path_for(cfg: DataConfig, scope: str) -> Path:
-    """Manifest file for a scope: ``all``/``pinned`` use ``data/manifest.lock``."""
-    if scope in ("all", "pinned"):
-        return cfg.root / MANIFEST_NAME
-    if scope == "fixture":
-        return cfg.root / "tests" / "fixtures" / "manifest.lock"
-    raise ValueError(f"unknown manifest scope: {scope!r}")
 
 
 def _collect_files(cfg: DataConfig, scope: str) -> list[Path]:
@@ -339,6 +501,8 @@ def _collect_files(cfg: DataConfig, scope: str) -> list[Path]:
         for path in sorted(root.rglob("*")):
             if not path.is_file():
                 continue
+            if path.name.endswith(IGNORED_SUFFIXES):
+                continue
             if path.name in ("manifest.lock", ".DS_Store") or "__pycache__" in path.parts:
                 continue
             files.append(path)
@@ -346,11 +510,13 @@ def _collect_files(cfg: DataConfig, scope: str) -> list[Path]:
 
 
 def write_manifest(cfg: DataConfig, scope: str = "all") -> Path:
-    """Hash every file in *scope* and rewrite its manifest, sorted by path.
+    """Rebuild a manifest from every file in *scope* on disk, sorted by path.
 
-    Entries already in the manifest whose file is absent from disk are preserved (the
-    OSAP cache is gitignored while its manifest is committed, so a failed or absent cache
-    must not drop entries).
+    A full rebuild for tests and fixture regeneration; the fetch CLI never calls it
+    (it uses :class:`ManifestUpdater` so existing entries are not rewritten). Entries
+    already in the manifest whose file is absent from disk are preserved (the OSAP
+    cache is gitignored while its manifest is committed, so a failed or absent cache
+    must not drop entries). ``.rejected``/``.tmp`` working files are ignored.
     """
     manifest_path = manifest_path_for(cfg, scope)
     root = cfg.root
@@ -363,11 +529,7 @@ def write_manifest(cfg: DataConfig, scope: str = "all") -> Path:
             if entry.path not in entries and not (root / entry.path).exists():
                 entries[entry.path] = entry
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [
-        f"{entry.sha256}  {entry.path}  {entry.size}\n"
-        for entry in sorted(entries.values(), key=lambda item: item.path)
-    ]
-    manifest_path.write_text("".join(lines), encoding="utf-8")
+    manifest_path.write_text(_manifest_text(list(entries.values())), encoding="utf-8")
     return manifest_path
 
 
@@ -434,6 +596,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="re-download Ken French files and update the pinned hashes in config/data.toml",
     )
+    parser.add_argument(
+        "--update-manifest",
+        action="store_true",
+        help="rewrite manifest entries for re-downloaded files that changed",
+    )
     parser.add_argument("--verify", action="store_true", help="verify manifest hashes")
     parser.add_argument("--manifest-scope", choices=("all", "pinned", "fixture"), default="all")
     parser.add_argument("--config", type=Path, default=Path("config/data.toml"))
@@ -456,25 +623,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     selectors = args.osap or args.french or args.refresh_french
     do_osap = args.osap or not selectors
-    do_french = args.french or args.refresh_french
-    if not selectors:
-        pinned = [cfg.french.pinned_dir / f"{name}_monthly.csv" for name in ("ff5", "umd")]
-        do_french = not all(path.is_file() for path in pinned)
+    do_french = args.french or args.refresh_french or not selectors
 
+    updater = ManifestUpdater(manifest_path_for(cfg, "all"), cfg.root, update=args.update_manifest)
     try:
         if do_osap:
-            paths = fetch_osap(cfg)
-            for path in paths:
-                print(f"wrote {path.relative_to(cfg.root)}")
+            fetch_osap(cfg, updater=updater)
         if do_french:
-            paths = fetch_french(cfg, refresh=args.refresh_french)
-            for path in paths:
-                print(f"wrote {path.relative_to(cfg.root)}")
-        manifest_path = write_manifest(cfg, "all")
-        print(f"wrote {manifest_path.relative_to(cfg.root)}")
+            fetch_french(cfg, refresh=args.refresh_french, updater=updater)
+        manifest_path = updater.save()
     except (FetchError, FrenchParseError) as exc:
         print(f"fetch failed: {exc}", file=sys.stderr)
         return 1
+    if manifest_path is None:
+        print("manifest unchanged")
+    else:
+        print(f"wrote {manifest_path.relative_to(cfg.root)}")
     return 0
 
 

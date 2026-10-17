@@ -1,39 +1,32 @@
 """Generate the committed fixture data under tests/fixtures/data/.
 
-Two sources, selected by ``--source`` (default ``auto``):
-
-- ``osap``: subset the real pinned 202510 canonical cache
-  (``data/raw/202510/signal_doc.csv`` and ``port_<name>.csv``) to the 15 fixture
-  predictors, keeping only ``port == "LS"`` rows. Requires ``make fetch`` to have
-  succeeded for the pinned vintage.
-- ``synthetic``: deterministic synthetic monthly returns (seeded
-  ``numpy.random.default_rng(20261016)``, normal(0.5, 4.0) percent) for the same 15
-  predictors, using the real predictor metadata from the Chen-Zimmermann SignalDoc
-  (downloaded once from
-  https://raw.githubusercontent.com/OpenSourceAP/CrossSection/master/SignalDoc.csv and
-  committed as ``data/signaldoc_raw.csv`` inside the fixture so reruns are offline).
-  Deliberate edge cases: ``MaxRet`` has three null-return months in 1995 and
-  ``dVolPut`` returns are shifted by -1.0 percent per month so its in-sample mean is
-  negative and its ``ret_norm`` is null by construction.
+The fixture is a subset of the pinned OSAP 202510 canonical cache: the 15
+pre-registered predictors below, ``port == "LS"`` rows only, all months kept exactly
+as the cache has them (the production panel drops pre-sample months, the fixture does
+not). Predictors without long-short rows in a given portfolio file are simply absent
+from that file -- never padded. Requires the cache populated by ``make fetch`` for the
+pinned vintage.
 
 Outputs (all under ``tests/fixtures``): ``data/osap/202510/signal_doc.csv``,
 ``data/osap/202510/port_<name>.csv`` for op/deciles_ew/deciles_vw, copies of the pinned
 Ken French CSVs under ``data/pinned/``, ``data/FIXTURE_SOURCE.txt`` (first line
-``osap-202510`` or ``synthetic``) and ``manifest.lock`` covering everything under
-``data/``. Reruns are byte-deterministic given the same source inputs.
+``osap-202510``; the source files and their SHA-256 hashes) and ``manifest.lock``
+covering everything under ``data/``. Reruns are byte-deterministic given the same
+source inputs.
+
+Edge cases that the retired synthetic fixture injected on purpose (null returns,
+a predictor-portfolio with a non-positive in-sample mean) do not occur in the real
+202510 cache; unit tests cover them with hand-built frames instead.
 """
 
 from __future__ import annotations
 
 import argparse
-import calendar
 import shutil
 import sys
-import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 from anomaly_decay.data.fetch import sha256_file
 from anomaly_decay.io import write_csv_canonical
@@ -57,8 +50,6 @@ PREDICTORS: tuple[str, ...] = (
 )
 PORTFOLIOS: tuple[str, ...] = ("op", "deciles_ew", "deciles_vw")
 VINTAGE = 202510
-VINTAGE_LAST_YYYYMM = 202412
-SEED = 20261016
 SIGNAL_DOC_COLUMNS: tuple[str, ...] = (
     "Acronym",
     "Cat.Signal",
@@ -80,17 +71,25 @@ PORT_COLUMNS: tuple[str, ...] = (
     "Nlong",
     "Nshort",
 )
-SIGNAL_DOC_URL = "https://raw.githubusercontent.com/OpenSourceAP/CrossSection/master/SignalDoc.csv"
+# The R3 pitfall: canonical CSVs store `port` as text ("01", ..., "LS") and the date as
+# ISO text; leave both as text on the way in.
+CSV_OVERRIDES: dict[str, pl.DataTypeClass] = {"port": pl.Utf8, "date": pl.Utf8}
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _osap_files_present(repo_root: Path) -> bool:
+def _source_files(repo_root: Path) -> list[Path]:
     raw = repo_root / "data" / "raw" / str(VINTAGE)
-    needed = [raw / "signal_doc.csv", *(raw / f"port_{name}.csv" for name in PORTFOLIOS)]
-    return all(path.is_file() for path in needed)
+    files = [raw / "signal_doc.csv", *(raw / f"port_{name}.csv" for name in PORTFOLIOS)]
+    pinned = repo_root / "data" / "pinned"
+    files += [pinned / name for name in ("ff5_monthly.csv", "umd_monthly.csv")]
+    return files
+
+
+def _missing_sources(repo_root: Path) -> list[Path]:
+    return [path for path in _source_files(repo_root) if not path.is_file()]
 
 
 def _write_signal_doc(source: pl.DataFrame, out_path: Path) -> None:
@@ -101,94 +100,25 @@ def _write_signal_doc(source: pl.DataFrame, out_path: Path) -> None:
     write_csv_canonical(subset, out_path, sort_by=["Acronym"])
 
 
-def _months_between(first: int, last: int) -> list[int]:
-    months = []
-    yyyymm = first
-    while yyyymm <= last:
-        months.append(yyyymm)
-        year, month = divmod(yyyymm, 100)
-        if month == 12:
-            yyyymm = (year + 1) * 100 + 1
-        else:
-            yyyymm += 1
-    return months
-
-
-def _last_day(yyyymm: int) -> str:
-    year, month = divmod(yyyymm, 100)
-    return f"{year:04d}-{month:02d}-{calendar.monthrange(year, month)[1]:02d}"
-
-
 def _from_osap(repo_root: Path, fixtures_dir: Path) -> None:
     raw = repo_root / "data" / "raw" / str(VINTAGE)
     signal_doc = pl.read_csv(raw / "signal_doc.csv", infer_schema_length=500)
     _write_signal_doc(signal_doc, fixtures_dir / "data" / "osap" / str(VINTAGE) / "signal_doc.csv")
     for name in PORTFOLIOS:
-        frame = pl.read_csv(raw / f"port_{name}.csv")
+        frame = pl.read_csv(raw / f"port_{name}.csv", schema_overrides=CSV_OVERRIDES)
         subset = frame.filter(
             pl.col("signalname").is_in(PREDICTORS) & (pl.col("port") == "LS")
         ).select(PORT_COLUMNS)
-        missing = sorted(set(PREDICTORS) - set(subset["signalname"].to_list()))
-        if missing:
+        present = set(subset["signalname"].to_list())
+        missing = sorted(set(PREDICTORS) - present)
+        if missing and name == "op":
             raise SystemExit(f"predictors missing from port_{name}.csv: {missing}")
+        if missing:
+            # Real coverage: only 179 of 212 predictors have deciles long-short rows;
+            # a predictor without them is absent from this file by construction.
+            print(f"port_{name}.csv: no LS rows for {missing} (real coverage, not padded)")
         write_csv_canonical(
             subset,
-            fixtures_dir / "data" / "osap" / str(VINTAGE) / f"port_{name}.csv",
-            sort_by=["signalname", "port", "date"],
-        )
-
-
-def _signaldoc_raw(fixtures_dir: Path) -> pl.DataFrame:
-    raw_path = fixtures_dir / "data" / "signaldoc_raw.csv"
-    if not raw_path.is_file():
-        with urllib.request.urlopen(SIGNAL_DOC_URL) as response:
-            raw_path.parent.mkdir(parents=True, exist_ok=True)
-            raw_path.write_bytes(response.read())
-    return pl.read_csv(raw_path, infer_schema_length=500)
-
-
-def _synthetic_port_frame(
-    rng: np.random.Generator, predictor: str, sample_start_year: int
-) -> pl.DataFrame:
-    months = _months_between((sample_start_year - 1) * 100 + 1, VINTAGE_LAST_YYYYMM)
-    returns = rng.normal(0.5, 4.0, len(months))
-    if predictor == "dVolPut":
-        returns = returns - 1.0  # in-sample mean <= 0 on purpose (ret_norm is null)
-    values: list[float | None] = [float(value) for value in returns]
-    if predictor == "MaxRet":
-        for yyyymm in (199501, 199502, 199503):
-            values[months.index(yyyymm)] = None  # dropped rows, counted by the builder
-    return pl.DataFrame(
-        {
-            "signalname": [predictor] * len(months),
-            "port": ["LS"] * len(months),
-            "date": [_last_day(yyyymm) for yyyymm in months],
-            "ret": values,
-            "signallag": [1] * len(months),
-            "Nlong": [100] * len(months),
-            "Nshort": [100] * len(months),
-        }
-    )
-
-
-def _from_synthetic(fixtures_dir: Path) -> None:
-    signal_doc = _signaldoc_raw(fixtures_dir)
-    _write_signal_doc(signal_doc, fixtures_dir / "data" / "osap" / str(VINTAGE) / "signal_doc.csv")
-    metadata = signal_doc.filter(pl.col("Acronym").is_in(PREDICTORS)).select(
-        ["Acronym", "SampleStartYear"]
-    )
-    starts = dict(
-        zip(metadata["Acronym"].to_list(), metadata["SampleStartYear"].to_list(), strict=True)
-    )
-    rng = np.random.default_rng(SEED)
-    for name in PORTFOLIOS:
-        frames = [
-            _synthetic_port_frame(rng, predictor, int(starts[predictor]))
-            for predictor in PREDICTORS
-        ]
-        frame = pl.concat(frames).with_columns(pl.col("date").str.to_date("%Y-%m-%d"))
-        write_csv_canonical(
-            frame,
             fixtures_dir / "data" / "osap" / str(VINTAGE) / f"port_{name}.csv",
             sort_by=["signalname", "port", "date"],
         )
@@ -214,45 +144,42 @@ def _write_fixture_manifest(fixtures_dir: Path, repo_root: Path) -> None:
     (fixtures_dir / "manifest.lock").write_text(text, encoding="utf-8")
 
 
+def _write_fixture_source(fixtures_dir: Path, repo_root: Path) -> None:
+    lines = [
+        f"osap-{VINTAGE}",
+        f"predictors: {len(PREDICTORS)}",
+        f"source: OSAP release {VINTAGE} canonical cache (port == LS rows), all months",
+    ]
+    for path in _source_files(repo_root):
+        rel = path.relative_to(repo_root).as_posix()
+        lines.append(f"source-sha256: {rel} {sha256_file(path)}")
+    (fixtures_dir / "data" / "FIXTURE_SOURCE.txt").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--source", choices=("auto", "osap", "synthetic"), default="auto")
+    parser.add_argument("--source", choices=("osap",), default="osap")
     parser.add_argument("--fixtures-dir", type=Path, default=Path(__file__).resolve().parent)
     args = parser.parse_args(argv)
 
     repo_root = _repo_root()
     fixtures_dir = args.fixtures_dir.resolve()
-    source = args.source
-    if source == "auto":
-        source = "osap" if _osap_files_present(repo_root) else "synthetic"
-    if source == "osap" and not _osap_files_present(repo_root):
+    missing = _missing_sources(repo_root)
+    if missing:
         print(
-            "osap source requested but data/raw/202510 canonical files are absent", file=sys.stderr
+            "the OSAP canonical cache is incomplete; run make fetch first. Missing: "
+            + ", ".join(path.relative_to(repo_root).as_posix() for path in missing),
+            file=sys.stderr,
         )
         return 1
 
-    if source == "osap":
-        _from_osap(repo_root, fixtures_dir)
-    else:
-        _from_synthetic(fixtures_dir)
+    _from_osap(repo_root, fixtures_dir)
     _copy_pinned(repo_root, fixtures_dir)
-
-    source_path = fixtures_dir / "data" / "FIXTURE_SOURCE.txt"
-    if source == "osap":
-        detail = f"source: OSAP release {VINTAGE} canonical cache (port == LS rows)"
-    else:
-        detail = (
-            f"seed: {SEED}; distribution: normal(0.5, 4.0) percent per month; "
-            f"metadata: {SIGNAL_DOC_URL}"
-        )
-    source_path.write_text(
-        f"{'osap-' + str(VINTAGE) if source == 'osap' else 'synthetic'}\n"
-        f"predictors: {len(PREDICTORS)}\n"
-        f"{detail}\n",
-        encoding="utf-8",
-    )
+    _write_fixture_source(fixtures_dir, repo_root)
     _write_fixture_manifest(fixtures_dir, repo_root)
-    print(f"fixture source: {source}")
+    print(f"fixture source: osap-{VINTAGE}")
     return 0
 
 

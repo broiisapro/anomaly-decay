@@ -94,7 +94,8 @@ def _read_factors(pinned_dir: Path) -> dict[int, dict[str, float | None]]:
 
 
 def _read_ls_rows(path: Path) -> dict[str, list[dict[str, object]]]:
-    frame = pl.read_csv(path, schema_overrides={"date": pl.Utf8})
+    # Canonical CSVs store `port` and `date` as text (R3); keep both that way.
+    frame = pl.read_csv(path, schema_overrides={"port": pl.Utf8, "date": pl.Utf8})
     by_signal: dict[str, list[dict[str, object]]] = {}
     for row in frame.iter_rows(named=True):
         if row["port"] != "LS":

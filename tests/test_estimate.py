@@ -17,7 +17,7 @@ import numpy as np
 import polars as pl
 import pytest
 from anomaly_decay.config import Spec, load_specifications
-from anomaly_decay.estimate.main import EstimationError, run_spec
+from anomaly_decay.estimate.main import EstimationError, decay_table, run_spec
 from anomaly_decay.schemas import PANEL_SCHEMA, RESULTS_SCHEMAS, validate_frame
 
 REPO_ROOT = Path(__file__).parents[1]
@@ -30,6 +30,7 @@ def load_spec(spec_id: str) -> Spec:
 
 
 MAIN = load_spec("main")
+NORMALIZED = load_spec("normalized")
 
 
 def _window(post_sample: int, post_publication: int) -> str:
@@ -149,6 +150,72 @@ def grid_records(
 def grid_panel(n_signals: int = 4, n_months: int = 48) -> pl.DataFrame:
     """``make_panel(grid_records(...))`` with the standard metadata."""
     return make_panel(grid_records(n_signals, n_months))
+
+
+def decay_panel(n_signals: int = 4, n_months: int = 48) -> pl.DataFrame:
+    """Known-effects panel: post-sample returns 30% below and post-publication 60% below.
+
+    Predictor *index* has in-sample level ``1.0 + 0.4 * index``; 1965 is
+    post-sample and 1966 post-publication with levels scaled by 0.7 and 0.4. The
+    monthly wiggle is ``+/-0.1 * (index + 1)`` alternating, so it averages exactly
+    zero within every 12-month window: the pooled in-sample mean is the average
+    level (1.6) and the fixed-effects coefficients are -0.3 and -0.6 times it.
+    """
+    records: list[dict[str, object]] = []
+    for index in range(n_signals):
+        level = 1.0 + 0.4 * index
+        for month_index in range(n_months):
+            year = 1963 + month_index // 12
+            month = month_index % 12 + 1
+            if year <= 1964:
+                factor = 1.0
+            elif year == 1965:
+                factor = 0.7
+            else:
+                factor = 0.4
+            wiggle = 0.1 * (index + 1) * (1 if month_index % 2 == 0 else -1)
+            records.append(
+                {
+                    "signalname": f"S{index}",
+                    "yyyymm": year * 100 + month,
+                    "ret": factor * level + wiggle,
+                    "post_sample": int(year == 1965),
+                    "post_publication": int(year == 1966),
+                }
+            )
+    return make_panel(records)
+
+
+def test_decay_table_recovers_known_effects() -> None:
+    panel = decay_panel()
+    coefs = run_spec(panel, MAIN)
+    decay = decay_table(panel, MAIN, coefs)
+
+    validate_frame(decay, RESULTS_SCHEMAS["decay.csv"])
+    assert decay["method"].unique().to_list() == ["pooled_ratio"]
+    pooled = {row["term"]: row for row in decay.iter_rows(named=True)}
+    assert pooled["post_sample"]["in_sample_mean"] == pytest.approx(1.6, abs=1e-12)
+    assert pooled["post_sample"]["decay_pct"] == pytest.approx(-30.0, abs=1e-9)
+    assert pooled["post_publication"]["decay_pct"] == pytest.approx(-60.0, abs=1e-9)
+    assert pooled["post_sample"]["n_predictors"] == 4
+    assert pooled["post_sample"]["n_obs"] == 192
+    coefficient_ses = coefs.sort("term")["se"].to_list()
+    decay_ses = [pooled[term]["se_pct"] for term in sorted(pooled)]
+    np.testing.assert_allclose(decay_ses, [100.0 * se / 1.6 for se in coefficient_ses])
+
+    normalized = decay_table(panel, NORMALIZED, run_spec(panel, NORMALIZED))
+    assert normalized["method"].unique().to_list() == ["normalized"]
+    scaled = {row["term"]: row for row in normalized.iter_rows(named=True)}
+    assert scaled["post_sample"]["in_sample_mean"] == 1.0
+    assert scaled["post_sample"]["decay_pct"] == pytest.approx(-30.0, abs=1e-6)
+    assert scaled["post_publication"]["decay_pct"] == pytest.approx(-60.0, abs=1e-6)
+
+
+def test_decay_table_rejects_other_dependent_variables() -> None:
+    panel = decay_panel()
+    coefs = run_spec(panel, MAIN)
+    with pytest.raises(EstimationError, match="decay requires"):
+        decay_table(panel, replace(MAIN, dep_var="ret_factor_adj"), coefs)
 
 
 def test_run_spec_output_matches_results_schema() -> None:

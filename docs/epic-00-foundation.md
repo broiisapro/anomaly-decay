@@ -123,7 +123,10 @@ Quarto report that renders from `results/` alone.
   `QUARTO_PROJECT_DIR`, rather than relative to `report/`; this matches the documented
   `results/` location and works for both render targets.
 - **`project.render` is explicit** in `_quarto.yml` (see the worktree discovery reason).
-- **Typst PDF in CI**: recorded below after the first self-hosted run.
+- **Typst PDF in CI works on the self-hosted runner.** The first `reproduce-fixture` run
+  that includes the render compiled `index.typ` to `index.pdf` and asserted both output
+  files (run 39004970881); no HTML-only fallback is needed, so decision S11 is not
+  exercised.
 - **Ken French pinned files currently run through 2026-08** (the download date's latest
   month), not through the OSAP vintage's 2024-12; this is harmless for joins because the
   panel only uses months present in the returns.

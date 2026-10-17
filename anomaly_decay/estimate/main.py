@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -280,6 +280,38 @@ def decay_table(panel: pl.DataFrame, spec: Spec, coefs: pl.DataFrame) -> pl.Data
     return pl.DataFrame(rows, schema=RESULTS_SCHEMAS["decay.csv"])
 
 
+def _labelled_rows(spec: Spec, coefs: pl.DataFrame) -> pl.DataFrame:
+    """Coefficient rows with the spec's label, in the robustness/extension schema."""
+    return coefs.select(
+        "spec",
+        pl.lit(spec.label).alias("label"),
+        "term",
+        "coef",
+        "se",
+        "t",
+        "n_predictors",
+        "n_obs",
+    )
+
+
+def _group_rows(
+    specs: Sequence[Spec], estimates: Mapping[str, pl.DataFrame], groups: tuple[str, ...]
+) -> pl.DataFrame | None:
+    """Labelled rows for the estimated specs of *groups*, or None when there are none.
+
+    The CLI uses this so every specification is estimated exactly once: the
+    per-spec loop already produces the coefficients that
+    :func:`anomaly_decay.estimate.robustness.run_robustness` and
+    :func:`anomaly_decay.estimate.extension.run_extension` would recompute.
+    """
+    frames = [
+        _labelled_rows(spec, estimates[spec.id])
+        for spec in specs
+        if spec.group in groups and spec.id in estimates
+    ]
+    return pl.concat(frames) if frames else None
+
+
 def _spec_status(spec: Spec, status: str) -> dict[str, object]:
     return {
         "spec": spec.id,
@@ -314,15 +346,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI: ``python -m anomaly_decay.estimate.main --panel PATH --specs PATH --results-dir DIR
     [--print-headline]``.
 
-    Writes ``main.csv``, ``decay.csv`` and ``specs_run.csv`` under *results-dir*;
-    ``--print-headline`` prints the post-sample and post-publication decay (%) with
-    SEs and N predictors.
+    Writes ``main.csv``, ``decay.csv``, ``robustness.csv``, ``extension.csv``
+    and ``specs_run.csv`` under *results-dir*; ``--print-headline`` prints the
+    post-sample and post-publication decay (%) with SEs and N predictors.
 
     Every specification in *specs* is run (unless ``--only ID`` restricts the run
-    to one); a specification that raises :class:`EstimationError` is recorded as
-    ``failed: <reason>`` in ``specs_run.csv`` and does not stop the others.
-    ``decay.csv`` carries the pooled-ratio rows of ``main`` and the normalized
-    rows of ``normalized``, whichever of the two ran.
+    to one) and estimated exactly once; a specification that raises
+    :class:`EstimationError` is recorded as ``failed: <reason>`` in
+    ``specs_run.csv`` and does not stop the others. ``main.csv`` carries the
+    coefficients of ``main``; ``decay.csv`` the pooled-ratio rows of ``main``
+    and the normalized rows of ``normalized``; ``robustness.csv`` ``main`` plus
+    the ``group: robustness`` coefficients and ``extension.csv`` the
+    ``group: extension`` coefficients, both labelled — all of whichever
+    specifications ran successfully.
     """
     parser = argparse.ArgumentParser(
         prog="python -m anomaly_decay.estimate.main",
@@ -366,6 +402,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     decay = pl.concat(decay_parts) if decay_parts else None
     if decay is not None:
         write_results(decay, "decay.csv", args.results_dir)
+
+    robustness = _group_rows(specs, estimates, ("main", "robustness"))
+    if robustness is not None:
+        write_results(robustness, "robustness.csv", args.results_dir)
+
+    extension = _group_rows(specs, estimates, ("extension",))
+    if extension is not None:
+        write_results(extension, "extension.csv", args.results_dir)
 
     write_results(
         pl.DataFrame(statuses, schema=RESULTS_SCHEMAS["specs_run.csv"]),

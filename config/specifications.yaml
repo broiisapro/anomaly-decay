@@ -1,0 +1,84 @@
+# Pre-registered specifications for anomaly-decay.
+# Frozen by the annotated tag `specs-frozen` before the first full-data estimation.
+# Anything added after the tag must set `exploratory: true`; the report lists every specification run.
+version: 1
+
+defaults:
+  group: robustness
+  portfolio: op            # op | deciles_ew | deciles_vw
+  dep_var: ret             # ret | ret_norm | ret_factor_adj
+  convention: default      # default: post-publication from Jan of Year+1; alt: from Jan of Year
+  cov: clustered_time      # clustered_time | clustered_twoway | driscoll_kraay
+  cov_params: {}
+  universe:
+    pub_year_max: null
+    sample_start_year_min: null
+    clear_only: false
+  months:
+    start_yyyymm: null
+    end_yyyymm: null       # null = last month of the pinned vintage
+  extra_terms: []
+  exploratory: false
+
+specifications:
+  - id: main
+    label: "Main: predictors published by 2013, returns through 2013-12"
+    group: main
+    universe: {pub_year_max: 2013}
+    months: {end_yyyymm: 201312}
+
+  - id: main_twoway
+    base: main
+    label: "Two-way clustered SE (month and predictor)"
+    cov: clustered_twoway
+
+  - id: main_dk
+    base: main
+    label: "Driscoll-Kraay SE (Bartlett kernel, 12 lags)"
+    cov: driscoll_kraay
+    cov_params: {kernel: bartlett, bandwidth: 12}
+
+  - id: pubconv_alt
+    base: main
+    label: "Post-publication from January of the publication year"
+    convention: alt
+
+  - id: start_1963
+    base: main
+    label: "Excluding predictors whose sample starts before 1963"
+    universe: {pub_year_max: 2013, sample_start_year_min: 1963}
+
+  - id: clear_only
+    base: main
+    label: "Clear predictors only"
+    universe: {pub_year_max: 2013, clear_only: true}
+
+  - id: ew_deciles
+    base: main
+    label: "Equal-weighted decile long-short portfolios"
+    portfolio: deciles_ew
+
+  - id: vw_deciles
+    base: main
+    label: "Value-weighted decile long-short portfolios"
+    portfolio: deciles_vw
+
+  - id: factor_adj
+    base: main
+    label: "FF5 + momentum adjusted returns (in-sample betas), from 1963-07"
+    dep_var: ret_factor_adj
+    months: {start_yyyymm: 196307, end_yyyymm: 201312}
+
+  - id: normalized
+    base: main
+    label: "Returns scaled by each predictor's in-sample mean"
+    dep_var: ret_norm
+
+  - id: full_extension
+    label: "Extension: all predictors, returns through the vintage's last month"
+    group: extension
+
+  - id: ext_pub_after_2000
+    base: full_extension
+    label: "Extension: post-publication decay for predictors published after 2000 vs before"
+    extra_terms: [post_publication_x_pub_after_2000]

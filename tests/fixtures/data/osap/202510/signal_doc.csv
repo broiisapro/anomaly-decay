@@ -1,0 +1,16 @@
+Acronym,Cat.Signal,Predictability in OP,Authors,Year,Journal,Cat.Economic,Cat.Data,SampleStartYear,SampleEndYear
+AM,Predictor,1_clear,Fama and French,1992,JF,valuation,Accounting,1963,1990
+Accruals,Predictor,1_clear,Sloan,1996,AR,accruals,Accounting,1962,1991
+AssetGrowth,Predictor,1_clear,"Cooper, Gulen and Schill",2008,JF,investment,Accounting,1968,2003
+BM,Predictor,1_clear,Stattman,1980,Other,valuation,Accounting,1962,1976
+Beta,Predictor,2_likely,Fama and MacBeth,1973,JPE,risk,Price,1929,1968
+BetaFP,Predictor,2_likely,Frazzini and Pedersen,2014,JFE,other,Price,1929,2012
+EP,Predictor,1_clear,Basu,1977,JF,valuation,Accounting,1957,1971
+GP,Predictor,1_clear,Novy-Marx,2013,JFE,profitability,Accounting,1963,2010
+IdioVol3F,Predictor,1_clear,Ang et al.,2006,JF,volatility,Price,1963,2000
+MaxRet,Predictor,1_clear,"Bali, Cakici, and Whitelaw",2011,JFE,volatility,Price,1962,2005
+Mom12m,Predictor,1_clear,Jegadeesh and Titman,1993,JF,momentum,Price,1964,1989
+STreversal,Predictor,1_clear,Jegadeesh,1990,JF,short-term reversal,Price,1934,1987
+Size,Predictor,1_clear,Banz,1981,JFE,size,Price,1926,1975
+TrendFactor,Predictor,1_clear,"Han, Zhou, Zhu",2016,JFE,momentum,Price,1930,2014
+dVolPut,Predictor,2_likely,"An, Ang, Bali, Cakici",2014,JF,informed trading,Options,1996,2011

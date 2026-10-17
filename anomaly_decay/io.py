@@ -101,19 +101,15 @@ def write_results(df: pl.DataFrame, name: str, results_dir: Path) -> Path:
 def read_results(name: str, results_dir: Path) -> pl.DataFrame:
     """Read results file *name* from *results_dir* with the schema's exact dtypes.
 
-    *name* must be a key of :data:`~anomaly_decay.schemas.RESULTS_SCHEMAS`; nothing is
-    inferred by the CSV parser. The parsed frame is validated against the schema.
+    *name* must be a key of :data:`~anomaly_decay.schemas.RESULTS_SCHEMAS`. Every column
+    is parsed with the schema dtype (``schema_overrides``), so a column that is entirely
+    null in the file still comes back as ``Float64`` instead of ``Null``/``String``.
+    The parsed frame is validated against the schema.
     """
     schema = _schema_for(name)
     path = Path(results_dir) / name
     if not path.is_file():
         raise FileNotFoundError(path)
-    overrides: dict[str, DataTypeClass] = {}
-    for column, dtype in schema.items():
-        if dtype == pl.Utf8:
-            overrides[column] = pl.Utf8
-        elif dtype == pl.Boolean:
-            overrides[column] = pl.Boolean
-    frame = pl.read_csv(path, schema_overrides=overrides)
+    frame = pl.read_csv(path, schema_overrides=dict(schema))
     out = _frame_with_schema_dtypes(frame, schema)
     return out

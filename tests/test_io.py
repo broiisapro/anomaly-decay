@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 from anomaly_decay.io import (
     RESULTS_SORT_KEYS,
+    _frame_with_schema_dtypes,
     read_results,
     write_csv_canonical,
     write_results,
@@ -140,13 +141,33 @@ def test_result_text_columns_survive_zero_padding(tmp_path: Path) -> None:
     assert back["value"].to_list() == ["01", "01"]
 
 
-def test_read_results_validates_dtypes(tmp_path: Path) -> None:
+def test_read_results_rejects_damaged_file(tmp_path: Path) -> None:
+    # a value that cannot be parsed as the schema dtype fails at parse time
     (tmp_path / "event_time.csv").write_text(
         "anchor,event_month,mean_ret,se,n_predictors\npublication,0.5,1.0,0.2,10\n",
         encoding="utf-8",
     )
-    with pytest.raises(SchemaError, match="expected dtype"):
+    with pytest.raises(pl.exceptions.PolarsError):
         read_results("event_time.csv", tmp_path)
+
+    # a frame that parses but does not satisfy the schema fails validation
+    parsed = pl.read_csv(
+        tmp_path / "event_time.csv",
+        schema_overrides={"anchor": pl.Utf8, "event_month": pl.Float64},
+    )
+    with pytest.raises(SchemaError, match="expected dtype"):
+        _frame_with_schema_dtypes(parsed, RESULTS_SCHEMAS["event_time.csv"])
+
+
+def test_read_results_keeps_all_null_float_columns(tmp_path: Path) -> None:
+    frame = _results_frame("predictor_summary.csv").with_columns(
+        pl.lit(None, dtype=pl.Float64).alias("se_mean")
+    )
+    path = write_results(frame, "predictor_summary.csv", tmp_path)
+    assert path.read_text(encoding="utf-8").count("\n") == frame.height + 1
+    back = read_results("predictor_summary.csv", tmp_path)
+    assert back.schema["se_mean"] == pl.Float64
+    assert back["se_mean"].null_count() == back.height
 
 
 def _frame() -> pl.DataFrame:

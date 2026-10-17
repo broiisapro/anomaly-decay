@@ -1,0 +1,33 @@
+# Orchestration and agent worktrees (never committed)
+.orchestration/
+.worktrees/
+
+# Secrets
+.env
+
+# Data caches (hashes live in data/manifest.lock; pinned small files in data/pinned/ are committed)
+data/raw/
+data/processed/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Quarto / Jupyter
+report/_site/
+report/.quarto/
+*.quarto_ipynb
+.ipynb_checkpoints/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

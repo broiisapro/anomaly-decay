@@ -181,9 +181,24 @@ Key: (`signalname`, `portfolio`, `yyyymm`), unique; sorted by key.
 (`main|robustness|extension`), `portfolio`, `universe` (filters), `months` (`end_yyyymm`), `dep_var`,
 `convention`, `cov` (`clustered_time|clustered_twoway|driscoll_kraay`), `extra_terms`, `exploratory`.
 
+### 5.5 Module additions (Epic 01)
+- `anomaly_decay.io`: `write_results(df, name, results_dir)` / `read_results(name, results_dir)` validate against
+  `RESULTS_SCHEMAS`, order columns, sort rows by `RESULTS_SORT_KEYS`, and write canonical CSV.
+- `anomaly_decay.estimate.factors.factor_adjusted_returns(panel)`: FF5 + UMD betas per predictor × portfolio from
+  in-sample months only (≥ 36 usable months); `ret_factor_adj = ret − β·f`.
+- `anomaly_decay.estimate.descriptive`: `predictor_summary`, `event_time`, `coverage` on the full-extension universe
+  (`op`, all predictors, all months, default convention).
+- `anomaly_decay.reporting`: the only way the report reads results (env `ANOMALY_DECAY_RESULTS`).
+- `config/original_paper.yaml`: original-paper comparison values, entered only after verification against the paper.
+- Fixture runs write to `data/processed/fixture/` and never to `results/`.
+
 ## 6. Makefile targets
-`reproduce` (fetch → metadata → panel → estimate → figures → report), `reproduce-fixture` (same, offline, fixture
-inputs, then compare to expected), `verify-hashes` (prints `all hashes match`), `report`, `lint`, `types`, `test`.
+`fetch` (cache-aware; verifies downloads against `data/manifest.lock`), `verify-hashes` (prints `all hashes match`),
+`refresh-french`, stage targets `metadata`, `panel`, `estimate`, `descriptive`, `figures`, `report`;
+`reproduce` (fetch → metadata → panel → estimate → descriptive → figures → report);
+`reproduce-fixture` (offline: the same stages on `tests/fixtures/data/` into `data/processed/fixture/`, panel compared
+with `tests/fixtures/panel_fixture.parquet`, `main.csv` compared with `tests/fixtures/expected_main_fixture.csv` to
+1e-10, report rendered); `report-fixture`, `report-placeholder`, `lint`, `types`, `test`.
 
 ## 7. CI
 GitHub Actions; jobs `lint`, `types`, `tests`, `reproduce-fixture` (job IDs are the required-check names).

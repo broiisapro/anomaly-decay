@@ -1,0 +1,21 @@
+spec,label,term,coef,se,t,n_predictors,n_obs
+clear_only,Clear predictors only,post_publication,-0.777,0.2331,-3.3333333333333335,12,5065
+clear_only,Clear predictors only,post_sample,-0.444,0.1776,-2.5,12,5065
+ew_deciles,Equal-weighted decile long-short portfolios,post_publication,-0.444,0.1665,-2.6666666666666665,12,5078
+ew_deciles,Equal-weighted decile long-short portfolios,post_sample,-0.222,0.1332,-1.6666666666666665,12,5078
+factor_adj,"FF5 + momentum adjusted returns (in-sample betas), from 1963-07",post_publication,-0.555,0.1887,-2.9411764705882355,12,5104
+factor_adj,"FF5 + momentum adjusted returns (in-sample betas), from 1963-07",post_sample,-0.222,0.1443,-1.5384615384615383,12,5104
+main,"Main: predictors published by 2013, returns through 2013-12",post_publication,-0.666,0.1998,-3.3333333333333335,12,5000
+main,"Main: predictors published by 2013, returns through 2013-12",post_sample,-0.333,0.1554,-2.142857142857143,12,5000
+main_dk,"Driscoll-Kraay SE (Bartlett kernel, 12 lags)",post_publication,-0.666,0.1887,-3.5294117647058822,12,5026
+main_dk,"Driscoll-Kraay SE (Bartlett kernel, 12 lags)",post_sample,-0.333,0.1443,-2.3076923076923075,12,5026
+main_twoway,Two-way clustered SE (month and predictor),post_publication,-0.666,0.2109,-3.1578947368421053,12,5013
+main_twoway,Two-way clustered SE (month and predictor),post_sample,-0.333,0.1665,-2.0,12,5013
+normalized,Returns scaled by each predictor's in-sample mean,post_publication,-0.666,0.1332,-5.0,12,5117
+normalized,Returns scaled by each predictor's in-sample mean,post_sample,-0.333,0.111,-3.0,12,5117
+pubconv_alt,Post-publication from January of the publication year,post_publication,-0.555,0.1887,-2.9411764705882355,12,5039
+pubconv_alt,Post-publication from January of the publication year,post_sample,-0.333,0.1554,-2.142857142857143,12,5039
+start_1963,Excluding predictors whose sample starts before 1963,post_publication,-0.555,0.1887,-2.9411764705882355,12,5052
+start_1963,Excluding predictors whose sample starts before 1963,post_sample,-0.222,0.1443,-1.5384615384615383,12,5052
+vw_deciles,Value-weighted decile long-short portfolios,post_publication,-0.333,0.1554,-2.142857142857143,12,5091
+vw_deciles,Value-weighted decile long-short portfolios,post_sample,-0.111,0.1221,-0.9090909090909091,12,5091

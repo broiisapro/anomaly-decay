@@ -8,11 +8,11 @@ and all six factors are present, which in practice drops everything before 1963-
 FF5 start). Portfolios with fewer than ``min_months`` usable in-sample months get no
 betas, so every ``ret_factor_adj`` of theirs is null.
 
-The adjusted return is ``ret - beta @ f``: the intercept is not subtracted, so the
-in-sample mean of the adjusted series is the regression's alpha rather than zero.
-``rf`` is not subtracted either — OSAP long-short portfolios are already
-zero-investment, so the long-short return is itself the excess return. Units stay
-percent per month.
+The adjusted return is ``ret - beta @ f``: the intercept is not subtracted, so every
+adjusted row keeps the predictor's average return (the in-sample mean of the adjusted
+series is the regression's alpha, not zero). ``rf`` is not subtracted either — OSAP
+long-short portfolios are already zero-investment, so the long-short return is itself
+the excess return. Units stay percent per month.
 """
 
 from __future__ import annotations

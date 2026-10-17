@@ -1,0 +1,26 @@
+# Original-paper reference values for the report.
+#
+# Numeric fields stay null until the orchestrator verifies them against the published
+# paper (decision O25): no agent types a result from the paper anywhere, in prose or in
+# code. The report renders "pending verification" for any null value.
+
+citation:
+  authors: "McLean, R. David, and Jeffrey Pontiff"
+  year: 2016
+  title: "Does Academic Research Destroy Stock Return Predictability?"
+  journal: "Journal of Finance"
+  volume: 71
+  issue: 1
+  pages: "5-32"
+  doi: "10.1111/jofi.12365"
+
+status: pending-verification
+
+table2_col1:
+  status: pending-verification
+  post_sample:
+    coef: null
+    se: null
+  post_publication:
+    coef: null
+    se: null

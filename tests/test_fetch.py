@@ -675,6 +675,20 @@ def test_fetch_cli_mismatch_exits_nonzero_and_keeps_rejected(
     assert manifest_path.read_bytes() == original
 
 
+def test_fetch_cli_malformed_manifest_exits_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    config_path = _write_config_file(tmp_path, cfg)
+    manifest_path = tmp_path / "data" / "manifest.lock"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text("not a manifest line\n", encoding="utf-8")
+    assert main(["--osap", "--config", str(config_path)]) == 1
+    err = capsys.readouterr().err
+    assert "fetch failed:" in err
+    assert "malformed manifest line" in err
+
+
 def test_fetch_cli_update_manifest_accepts_revised_download(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

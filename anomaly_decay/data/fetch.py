@@ -625,8 +625,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     do_osap = args.osap or not selectors
     do_french = args.french or args.refresh_french or not selectors
 
-    updater = ManifestUpdater(manifest_path_for(cfg, "all"), cfg.root, update=args.update_manifest)
     try:
+        updater = ManifestUpdater(
+            manifest_path_for(cfg, "all"), cfg.root, update=args.update_manifest
+        )
         if do_osap:
             fetch_osap(cfg, updater=updater)
         if do_french:

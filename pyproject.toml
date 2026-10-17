@@ -47,5 +47,12 @@ select = ["E", "F", "I", "B", "UP", "SIM", "NPY", "PD"]
 strict = true
 files = ["anomaly_decay"]
 
+[[tool.mypy.overrides]]
+module = ["openassetpricing", "openassetpricing.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "network: test may access the network (none should; the suite is offline-only)",
+]

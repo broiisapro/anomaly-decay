@@ -1,0 +1,51 @@
+[project]
+name = "anomaly_decay"
+version = "0.1.0"
+description = "Reproducible replication of McLean & Pontiff (2016): post-publication decay of anomaly returns"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openassetpricing",
+    "polars>=1.30,<2",
+    "pandas",
+    "pyarrow",
+    "linearmodels",
+    "statsmodels",
+    "matplotlib",
+    "pyyaml",
+    "requests",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "hypothesis",
+    "ruff",
+    "mypy",
+    "pandas-stubs",
+    "types-PyYAML",
+    "types-requests",
+    "jupyter",
+    "ipykernel",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["anomaly_decay"]
+
+[tool.ruff]
+line-length = 100
+src = ["anomaly_decay", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "NPY", "PD"]
+
+[tool.mypy]
+strict = true
+files = ["anomaly_decay"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -10,6 +10,7 @@ here and in the sibling modules of ``anomaly_decay.estimate``.
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -20,12 +21,16 @@ from linearmodels.panel.results import PanelEffectsResults
 from linearmodels.panel.utility import AbsorbingEffectError
 
 from anomaly_decay.config import Spec, load_specifications
-from anomaly_decay.schemas import RESULTS_SCHEMAS
+from anomaly_decay.estimate.factors import factor_adjusted_returns
+from anomaly_decay.io import write_results
+from anomaly_decay.schemas import PANEL_KEY, RESULTS_SCHEMAS
 
 __all__ = ["EstimationError", "decay_table", "main", "run_spec"]
 
 POST_SAMPLE = "post_sample"
 POST_PUBLICATION = "post_publication"
+POOLED_RATIO = "pooled_ratio"
+NORMALIZED = "normalized"
 _PUB_AFTER_2000 = "post_publication_x_pub_after_2000"
 
 
@@ -86,17 +91,19 @@ def _filter_sample(panel: pl.DataFrame, spec: Spec) -> pl.DataFrame:
 def _estimation_sample(panel: pl.DataFrame, spec: Spec, *, with_terms: bool) -> pl.DataFrame:
     """Filtered rows that enter the regression, complete on the dependent variable.
 
-    Adds the regression-term columns when *with_terms* is true. Rows whose
-    dependent variable is null (``ret_norm`` for predictors with a non-positive
-    in-sample mean) are dropped, so the returned frame is exactly the
-    estimation sample.
+    Adds the regression-term columns when *with_terms* is true. The
+    factor-adjusted dependent variable is joined from
+    :func:`anomaly_decay.estimate.factors.factor_adjusted_returns` on
+    :data:`~anomaly_decay.schemas.PANEL_KEY`. Rows whose dependent variable is
+    null (``ret_norm`` for predictors with a non-positive in-sample mean,
+    ``ret_factor_adj`` for portfolios without enough usable in-sample months)
+    are dropped, so the returned frame is exactly the estimation sample.
     """
     sample = _filter_sample(panel, spec)
     if spec.dep_var == "ret_factor_adj":
-        raise EstimationError(
-            f"specification '{spec.id}': factor-adjusted returns are not available yet"
-        )
-    if spec.dep_var not in ("ret", "ret_norm"):
+        adjusted = factor_adjusted_returns(panel)
+        sample = sample.join(adjusted, on=list(PANEL_KEY), how="left")
+    elif spec.dep_var not in ("ret", "ret_norm"):
         raise EstimationError(f"specification '{spec.id}': unsupported dep_var {spec.dep_var!r}")
     sample = sample.filter(pl.col(spec.dep_var).is_not_null())
     if with_terms:
@@ -161,9 +168,7 @@ def run_spec(panel: pl.DataFrame, spec: Spec) -> pl.DataFrame:
     are linearmodels estimators with default options.
 
     Raises :class:`EstimationError` when the sample is empty, a term has no
-    variation, or the regression is singular/absorbed. Until the
-    factor-adjustment module of this workstream lands, ``ret_factor_adj`` also
-    raises :class:`EstimationError`.
+    variation, or the regression is singular/absorbed.
     """
     sample = _estimation_sample(panel, spec, with_terms=True)
     if sample.height == 0:
@@ -214,8 +219,95 @@ def decay_table(panel: pl.DataFrame, spec: Spec, coefs: pl.DataFrame) -> pl.Data
     ``<= 0`` are excluded and counted via ``n_predictors``). ``decay_pct`` and
     ``se_pct`` are percentages (e.g. 26.0 means 26% lower); ``in_sample_mean`` is in
     percent per month. Window rules follow architecture §4.6.
+
+    Which method is produced follows ``spec.dep_var``: ``ret`` gives
+    ``pooled_ratio`` (``in_sample_mean`` is the mean ``ret`` over the in-sample
+    rows of the spec's own estimation sample, and the standard-error percentage
+    treats that mean as fixed: ``se_pct = 100 * se / in_sample_mean``, so it
+    carries only the coefficient's sampling error), ``ret_norm`` gives
+    ``normalized`` with ``decay_pct = 100 * coef`` and ``in_sample_mean = 1``
+    (the dependent variable is already scaled by each predictor's in-sample
+    mean). ``n_predictors`` and ``n_obs`` are the coefficients' regression
+    counts. A negative ``decay_pct`` means returns are lower. A zero pooled
+    in-sample mean is undefined and raises :class:`EstimationError`; a negative
+    one flips the sign of the ratio.
     """
-    raise NotImplementedError
+    if spec.dep_var == "ret_norm":
+        method = NORMALIZED
+        in_sample_mean = 1.0
+        rows = [
+            {
+                "spec": spec.id,
+                "method": method,
+                "term": row["term"],
+                "decay_pct": 100.0 * row["coef"],
+                "se_pct": 100.0 * row["se"],
+                "in_sample_mean": in_sample_mean,
+                "n_predictors": row["n_predictors"],
+                "n_obs": row["n_obs"],
+            }
+            for row in coefs.iter_rows(named=True)
+        ]
+    elif spec.dep_var == "ret":
+        method = POOLED_RATIO
+        sample = _estimation_sample(panel, spec, with_terms=False)
+        in_sample = sample.filter(pl.col("window") == "in_sample")
+        if in_sample.height == 0:
+            raise EstimationError(
+                f"specification '{spec.id}': no in-sample rows for the pooled mean"
+            )
+        in_sample_mean = float(in_sample.select(pl.col("ret").mean()).item())
+        if in_sample_mean == 0.0:
+            raise EstimationError(f"specification '{spec.id}': pooled in-sample mean is zero")
+        rows = [
+            {
+                "spec": spec.id,
+                "method": method,
+                "term": row["term"],
+                "decay_pct": 100.0 * row["coef"] / in_sample_mean,
+                "se_pct": 100.0 * row["se"] / in_sample_mean,
+                "in_sample_mean": in_sample_mean,
+                "n_predictors": row["n_predictors"],
+                "n_obs": row["n_obs"],
+            }
+            for row in coefs.iter_rows(named=True)
+        ]
+    else:
+        raise EstimationError(
+            f"specification '{spec.id}': decay requires dep_var ret or ret_norm, "
+            f"got {spec.dep_var!r}"
+        )
+    return pl.DataFrame(rows, schema=RESULTS_SCHEMAS["decay.csv"])
+
+
+def _spec_status(spec: Spec, status: str) -> dict[str, object]:
+    return {
+        "spec": spec.id,
+        "label": spec.label,
+        "status": status,
+        "exploratory": spec.exploratory,
+    }
+
+
+def _print_headline(decay: pl.DataFrame) -> int:
+    """Print the two pooled-ratio headline lines; 0 on success, 1 if unavailable."""
+    pooled = decay.filter(pl.col("method") == POOLED_RATIO)
+    rows = {row["term"]: row for row in pooled.iter_rows(named=True)}
+    lines: list[str] = []
+    for term, label in ((POST_SAMPLE, "post-sample"), (POST_PUBLICATION, "post-publication")):
+        row = rows.get(term)
+        if row is None:
+            print(
+                f"headline unavailable: no pooled_ratio result for {term}",
+                file=sys.stderr,
+            )
+            return 1
+        lines.append(
+            f"{label}: {row['decay_pct']:.1f}% (SE {row['se_pct']:.1f}%), "
+            f"N predictors = {row['n_predictors']}, N obs = {row['n_obs']}"
+        )
+    print("\n".join(lines))
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -225,10 +317,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     Writes ``main.csv``, ``decay.csv`` and ``specs_run.csv`` under *results-dir*;
     ``--print-headline`` prints the post-sample and post-publication decay (%) with
     SEs and N predictors.
+
+    Every specification in *specs* is run (unless ``--only ID`` restricts the run
+    to one); a specification that raises :class:`EstimationError` is recorded as
+    ``failed: <reason>`` in ``specs_run.csv`` and does not stop the others.
+    ``decay.csv`` carries the pooled-ratio rows of ``main`` and the normalized
+    rows of ``normalized``, whichever of the two ran.
     """
     parser = argparse.ArgumentParser(
         prog="python -m anomaly_decay.estimate.main",
-        description="Run the main specification and write decay results.",
+        description="Run the specification panel regressions and write decay results.",
     )
     parser.add_argument("--panel", type=Path, required=True, help="panel.parquet path")
     parser.add_argument("--specs", type=Path, required=True, help="specifications.yaml path")
@@ -236,10 +334,50 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--print-headline", action="store_true", help="print headline decay numbers"
     )
+    parser.add_argument("--only", metavar="ID", default=None, help="run one specification id only")
     args = parser.parse_args(argv)
+
     panel = pl.read_parquet(args.panel)
     specs = load_specifications(args.specs)
-    run_spec(panel, specs[0])
+    by_id = {spec.id: spec for spec in specs}
+    if args.only is not None and args.only not in by_id:
+        parser.error(f"unknown specification id: {args.only}")
+
+    estimates: dict[str, pl.DataFrame] = {}
+    decay_parts: list[pl.DataFrame] = []
+    statuses: list[dict[str, object]] = []
+    for spec in specs:
+        if args.only is not None and spec.id != args.only:
+            statuses.append(_spec_status(spec, "skipped"))
+            continue
+        try:
+            coefs = run_spec(panel, spec)
+            if spec.id in ("main", "normalized"):
+                decay_parts.append(decay_table(panel, spec, coefs))
+        except EstimationError as exc:
+            statuses.append(_spec_status(spec, f"failed: {exc}"))
+        else:
+            estimates[spec.id] = coefs
+            statuses.append(_spec_status(spec, "ok"))
+
+    if "main" in estimates:
+        write_results(estimates["main"], "main.csv", args.results_dir)
+
+    decay = pl.concat(decay_parts) if decay_parts else None
+    if decay is not None:
+        write_results(decay, "decay.csv", args.results_dir)
+
+    write_results(
+        pl.DataFrame(statuses, schema=RESULTS_SCHEMAS["specs_run.csv"]),
+        "specs_run.csv",
+        args.results_dir,
+    )
+
+    if args.print_headline:
+        if decay is None:
+            print("headline unavailable: the main specification did not run", file=sys.stderr)
+            return 1
+        return _print_headline(decay)
     return 0
 
 

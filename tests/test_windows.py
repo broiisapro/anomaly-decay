@@ -93,7 +93,7 @@ def test_alt_convention_boundaries(start: int, end: int, pub: int) -> None:
     # Under the alt convention post-publication starts in January of Year itself ...
     assert classify_month(december_of_pub_minus_one, start, end, pub, "alt") == "post_sample"
     assert classify_month(january_of_pub, start, end, pub, "alt") == "post_publication"
-    # ... while the default convention still calls December of Year-1 and of Year post-sample.
+    # ... while the default convention still calls both months post-sample.
     assert classify_month(december_of_pub_minus_one, start, end, pub, "default") == "post_sample"
     assert classify_month(january_of_pub, start, end, pub, "default") == "post_sample"
     # First month of Year+1 is post-publication under both conventions.

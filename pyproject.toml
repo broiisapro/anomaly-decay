@@ -55,4 +55,5 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 markers = [
     "network: test may access the network (none should; the suite is offline-only)",
+    "realdata: test needs the fetched OSAP cache under data/raw/<vintage> and is skipped without it",
 ]

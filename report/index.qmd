@@ -28,7 +28,6 @@ PAPER_STATUS = str(PAPER_TABLE.get("status", "pending-verification")).replace("-
 
 main = reporting.load_optional("main.csv")
 decay = reporting.load_optional("decay.csv")
-decay_main = decay.filter(pl.col("spec") == "main") if decay is not None else None
 robustness = reporting.load_optional("robustness.csv")
 extension = reporting.load_optional("extension.csv")
 specs_run = reporting.load_optional("specs_run.csv")
@@ -40,9 +39,9 @@ def main_value(term: str, column: str) -> object:
 
 
 def decay_value(method: str, term: str, column: str) -> object:
-    if decay_main is None:
+    if decay is None:
         return None
-    return reporting.lookup(decay_main, column, method=method, term=term)
+    return reporting.lookup(decay, column, method=method, term=term)
 
 
 def paper_value(term: str, field: str) -> object:
@@ -110,6 +109,24 @@ coverage_view = render_table(
     missing="`coverage.csv` has not been produced yet; the pinned vintage and its coverage render here after the descriptive stage runs.",
 )
 coverage_view
+```
+
+The event-time panel averages each predictor's long-short return around the two anchors —
+the month after its sample ends and the month after its publication — and the distribution
+panel compares each predictor's in-sample mean return with its post-publication mean return.
+
+```{python}
+reporting.figure_block(
+    "event_time",
+    "Average long-short return in event time around the sample end and around publication",
+)
+```
+
+```{python}
+reporting.figure_block(
+    "distribution",
+    "In-sample versus post-publication mean return by predictor",
+)
 ```
 
 # Method
@@ -207,12 +224,11 @@ post-publication shift is `{python} reporting.num(main_value("post_publication",
 percent per month (t = `{python} reporting.tstat(main_value("post_publication", "t"))`).
 
 ```{python}
-if decay_main is None:
-    decay_view = None
-else:
-    decay_view = decay_main.select(
-        "method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors"
-    )
+decay_view = (
+    decay.select("method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors")
+    if decay is not None
+    else None
+)
 
 decay_table_view = render_table(
     decay_view,
@@ -261,11 +277,9 @@ robustness_view
 ```
 
 ```{python}
-Markdown(
-    reporting.figure_block(
-        "coefplot",
-        "Robustness coefficients with 95% confidence intervals",
-    )
+reporting.figure_block(
+    "coefplot",
+    "Robustness coefficients with 95% confidence intervals",
 )
 ```
 

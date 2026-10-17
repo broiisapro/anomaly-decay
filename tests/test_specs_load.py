@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -72,6 +73,16 @@ def test_base_inheritance_keeps_universe_from_base(specs: list[Spec]) -> None:
     alt = _by_id(specs, "pubconv_alt")
     assert alt.convention == "alt"
     assert alt.pub_year_max == 2013
+
+
+def test_spec_groups_do_not_inherit_main(specs: list[Spec]) -> None:
+    # Every entry with `base: main` states its own group, so `group: main` does
+    # not leak into the robustness specs through inheritance.
+    assert Counter(spec.group for spec in specs) == {
+        "main": 1,
+        "robustness": 9,
+        "extension": 2,
+    }
 
 
 def test_nested_mapping_merges_key_by_key(specs: list[Spec]) -> None:

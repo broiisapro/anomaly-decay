@@ -8,6 +8,7 @@ are shared with the robustness and extension test modules.
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import replace
 from datetime import date
@@ -17,8 +18,9 @@ import numpy as np
 import polars as pl
 import pytest
 from anomaly_decay.config import Spec, load_specifications
+from anomaly_decay.estimate.factors import FACTOR_COLUMNS, factor_adjusted_returns
 from anomaly_decay.estimate.main import EstimationError, decay_table, run_spec
-from anomaly_decay.schemas import PANEL_SCHEMA, RESULTS_SCHEMAS, validate_frame
+from anomaly_decay.schemas import PANEL_KEY, PANEL_SCHEMA, RESULTS_SCHEMAS, validate_frame
 
 REPO_ROOT = Path(__file__).parents[1]
 SPECS_PATH = REPO_ROOT / "config" / "specifications.yaml"
@@ -91,13 +93,13 @@ def make_panel(records: list[dict[str, object]]) -> pl.DataFrame:
                 "sample_end_year": int(record.get("sample_end_year", 1964)),
                 "pub_year": int(record.get("pub_year", 1965)),
                 "clear": bool(record.get("clear", True)),
-                "mkt_rf": None,
-                "smb": None,
-                "hml": None,
-                "rmw": None,
-                "cma": None,
-                "umd": None,
-                "rf": None,
+                "mkt_rf": record.get("mkt_rf"),
+                "smb": record.get("smb"),
+                "hml": record.get("hml"),
+                "rmw": record.get("rmw"),
+                "cma": record.get("cma"),
+                "umd": record.get("umd"),
+                "rf": record.get("rf"),
             }
         )
     return pl.DataFrame(rows, schema=PANEL_SCHEMA)
@@ -216,6 +218,145 @@ def test_decay_table_rejects_other_dependent_variables() -> None:
     coefs = run_spec(panel, MAIN)
     with pytest.raises(EstimationError, match="decay requires"):
         decay_table(panel, replace(MAIN, dep_var="ret_factor_adj"), coefs)
+
+
+FACTOR_ADJ = load_spec("factor_adj")
+
+
+def _factor_value(name: str, month_index: int) -> float:
+    if name == "mkt_rf":
+        return math.sin(month_index / 3.0) + 0.1 * math.cos(month_index / 7.0)
+    if name == "smb":
+        return math.cos(month_index / 5.0)
+    if name == "hml":
+        return math.sin(month_index / 4.0) + 0.2
+    if name == "rmw":
+        return 0.5 * math.cos(month_index / 6.0)
+    if name == "cma":
+        return 0.7 * math.sin(month_index / 8.0)
+    return math.cos(month_index / 9.0) + 0.3
+
+
+def factor_records(
+    n_signals: int = 3, n_months: int = 60, *, post_shift: float = 0.0
+) -> list[dict[str, object]]:
+    """Panel with an exact factor structure: ``ret = alpha + beta @ f`` on every row.
+
+    In-sample months are 1963-1965 (36 per predictor, the factor module's
+    minimum), post-sample is 1966 and post-publication 1967. With *post_shift*
+    the stored factor values of the two post periods are shifted while ``ret``
+    keeps using the unshifted factors, so the true betas stay the in-sample
+    ones and post returns were generated out of the shifted sample.
+    """
+    records: list[dict[str, object]] = []
+    for index in range(n_signals):
+        alpha = 0.5 + 0.4 * index
+        betas = {
+            name: 0.2 + 0.1 * ((index + position) % 5)
+            for position, name in enumerate(FACTOR_COLUMNS)
+        }
+        for month_index in range(n_months):
+            year = 1963 + month_index // 12
+            month = month_index % 12 + 1
+            base = {name: _factor_value(name, month_index) for name in FACTOR_COLUMNS}
+            stored = {
+                name: value + post_shift if year >= 1966 else value for name, value in base.items()
+            }
+            records.append(
+                {
+                    "signalname": f"S{index}",
+                    "yyyymm": year * 100 + month,
+                    "ret": alpha + sum(betas[name] * base[name] for name in FACTOR_COLUMNS),
+                    "post_sample": int(year == 1966),
+                    "post_publication": int(year == 1967),
+                    "sample_end_year": 1965,
+                    "pub_year": 1966,
+                    **stored,
+                }
+            )
+    return records
+
+
+def _hand_betas(panel: pl.DataFrame, rows: pl.DataFrame) -> dict[str, np.ndarray]:
+    """OLS of ``ret`` on a constant and the six factors, per predictor, by hand."""
+    betas: dict[str, np.ndarray] = {}
+    for signal in rows["signalname"].unique().sort().to_list():
+        group = rows.filter(pl.col("signalname") == signal)
+        design = group.select(FACTOR_COLUMNS).to_numpy().astype(np.float64)
+        design = np.column_stack([design, np.ones(group.height)])
+        y = group["ret"].to_numpy().astype(np.float64)
+        betas[signal] = np.linalg.lstsq(design, y, rcond=None)[0]
+    return betas
+
+
+def test_factor_alphas_use_in_sample_betas_only() -> None:
+    """Classic-bug guard: factor betas never see post-sample or post-publication data.
+
+    Post-period factor values are shifted on a panel whose returns were
+    generated from the unshifted series. The in-sample adjusted returns must not
+    move, the post-period adjusted returns must equal
+    ``ret - beta_in_sample @ f_shifted`` with the betas recomputed by hand from
+    in-sample rows only, and the ``factor_adj`` regression must consume exactly
+    those adjusted returns. A full-sample-beta implementation is shown to give
+    different in-sample values, so the test would catch it.
+    """
+    panel = make_panel(factor_records(post_shift=0.0))
+    perturbed = make_panel(factor_records(post_shift=7.0))
+    merged = panel.join(factor_adjusted_returns(panel), on=list(PANEL_KEY), how="left")
+    merged_perturbed = perturbed.join(
+        factor_adjusted_returns(perturbed), on=list(PANEL_KEY), how="left"
+    )
+
+    in_sample = panel.filter(pl.col("window") == "in_sample")
+    key = ["signalname", "yyyymm"]
+    left = merged.filter(pl.col("window") == "in_sample").select(key + ["ret_factor_adj"])
+    right = merged_perturbed.filter(pl.col("window") == "in_sample").select(
+        key + ["ret_factor_adj"]
+    )
+    assert left.sort(key).equals(right.sort(key))
+
+    # only the factor loadings enter the adjustment; the constant (last column
+    # of the hand design) is not subtracted
+    hand = {
+        signal: beta[: len(FACTOR_COLUMNS)]
+        for signal, beta in _hand_betas(panel, in_sample).items()
+    }
+    post = merged_perturbed.filter(pl.col("window") != "in_sample").sort(key)
+    expected = [
+        row["ret"] - float(np.dot(hand[row["signalname"]], [row[name] for name in FACTOR_COLUMNS]))
+        for row in post.iter_rows(named=True)
+    ]
+    np.testing.assert_allclose(post["ret_factor_adj"].to_numpy(), expected, atol=1e-10)
+
+    full = {
+        signal: beta[: len(FACTOR_COLUMNS)]
+        for signal, beta in _hand_betas(perturbed, perturbed).items()
+    }
+    naive = [
+        row["ret"] - float(np.dot(full[row["signalname"]], [row[name] for name in FACTOR_COLUMNS]))
+        for row in in_sample.sort(key).iter_rows(named=True)
+    ]
+    naive_diff = np.abs(np.array(naive) - left.sort(key)["ret_factor_adj"].to_numpy()).max()
+    assert naive_diff > 1e-3
+
+    sample = merged_perturbed.filter(
+        (pl.col("portfolio") == "op")
+        & (pl.col("pub_year") <= 2013)
+        & (pl.col("yyyymm") >= 196307)
+        & (pl.col("yyyymm") <= 201312)
+        & pl.col("ret_factor_adj").is_not_null()
+    )
+    x = sample.select(["post_sample", "post_publication"]).to_numpy().astype(np.float64)
+    y = sample["ret_factor_adj"].to_numpy().astype(np.float64)
+    entity = sample["signalname"].to_numpy()
+    for signal in np.unique(entity):
+        mask = entity == signal
+        x[mask] -= x[mask].mean(axis=0)
+        y[mask] -= y[mask].mean(axis=0)
+    manual_beta = np.linalg.lstsq(x, y, rcond=None)[0]
+
+    result = run_spec(perturbed, FACTOR_ADJ)
+    np.testing.assert_allclose(result["coef"].to_numpy(), manual_beta, atol=1e-10)
 
 
 def test_run_spec_output_matches_results_schema() -> None:

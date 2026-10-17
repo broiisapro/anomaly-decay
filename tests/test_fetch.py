@@ -15,14 +15,19 @@ from anomaly_decay.config import (
     OsapConfig,
     load_data_config,
 )
+from anomaly_decay.data import fetch as fetch_module
 from anomaly_decay.data.fetch import (
     MAX_ATTEMPTS,
     PORT_COLUMNS,
     FetchError,
+    ManifestUpdater,
     fetch_french,
     fetch_osap,
     main,
+    manifest_path_for,
+    read_manifest,
     sha256_bytes,
+    sha256_file,
     verify_manifest,
     write_manifest,
 )
@@ -344,6 +349,216 @@ def test_write_manifest_preserves_absent_entries(tmp_path: Path) -> None:
     assert result.not_cached == ("data/raw/202510/port_op.csv",)
 
 
+# --- cache-aware fetch ------------------------------------------------------
+
+
+def _updater(cfg: DataConfig, *, update: bool = False) -> ManifestUpdater:
+    return ManifestUpdater(manifest_path_for(cfg, "all"), cfg.root, update=update)
+
+
+def test_fetch_osap_skips_files_matching_the_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    first = _updater(cfg)
+    written = fetch_osap(
+        cfg, openap_factory=lambda vintage: factory, sleep=lambda _: None, updater=first
+    )
+    first.save()
+    assert written == [
+        cfg.osap.raw_dir / "202510" / "signal_doc.csv",
+        cfg.osap.raw_dir / "202510" / "port_op.csv",
+    ]
+    capsys.readouterr()
+
+    def must_not_download(vintage: int) -> Any:
+        raise AssertionError("downloader called for a cached file")
+
+    second = _updater(cfg)
+    cached = fetch_osap(cfg, openap_factory=must_not_download, sleep=lambda _: None, updater=second)
+    assert cached == []
+    out = capsys.readouterr().out
+    assert "cached: data/raw/202510/signal_doc.csv" in out
+    assert "cached: data/raw/202510/port_op.csv" in out
+
+
+def test_fetch_osap_records_first_time_manifest_entries(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    updater = _updater(cfg)
+    fetch_osap(cfg, openap_factory=lambda vintage: factory, sleep=lambda _: None, updater=updater)
+    manifest = updater.save()
+    assert manifest == tmp_path / "data" / "manifest.lock"
+    entries = {entry.path: entry for entry in read_manifest(manifest)}
+    assert set(entries) == {
+        "data/raw/202510/signal_doc.csv",
+        "data/raw/202510/port_op.csv",
+    }
+    for rel in entries:
+        path = tmp_path / rel
+        assert entries[rel].sha256 == sha256_file(path)
+        assert entries[rel].size == path.stat().st_size
+    assert sorted(updater.added) == [
+        "data/raw/202510/port_op.csv",
+        "data/raw/202510/signal_doc.csv",
+    ]
+    assert updater.updated == []
+
+
+def test_fetch_osap_adopts_existing_files_without_entries(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    osap_dir = cfg.osap.raw_dir / "202510"
+    osap_dir.mkdir(parents=True)
+    (osap_dir / "signal_doc.csv").write_bytes(b"Acronym\nSize\n")
+    (osap_dir / "port_op.csv").write_bytes(b"signalname,port\nSize,LS\n")
+
+    def must_not_download(vintage: int) -> Any:
+        raise AssertionError("downloader called although files are on disk")
+
+    updater = _updater(cfg)
+    written = fetch_osap(
+        cfg, openap_factory=must_not_download, sleep=lambda _: None, updater=updater
+    )
+    assert written == []
+    updater.save()
+    out = capsys.readouterr().out
+    assert "adopted: data/raw/202510/signal_doc.csv" in out
+    entries = {entry.path: entry for entry in read_manifest(tmp_path / "data" / "manifest.lock")}
+    assert entries["data/raw/202510/signal_doc.csv"].sha256 == sha256_bytes(b"Acronym\nSize\n")
+
+
+def test_fetch_osap_mismatch_keeps_rejected_file_and_manifest_unchanged(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    updater = _updater(cfg)
+    fetch_osap(cfg, openap_factory=lambda vintage: factory, sleep=lambda _: None, updater=updater)
+    manifest = updater.save()
+    original = manifest.read_bytes()
+    port_path = cfg.osap.raw_dir / "202510" / "port_op.csv"
+    expected = updater.entry("data/raw/202510/port_op.csv")
+    assert expected is not None
+    port_path.unlink()
+
+    revised = port_frame().with_columns(pl.lit(0.6).alias("ret"))
+    revised_factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": revised})
+    second = _updater(cfg)
+    with pytest.raises(FetchError) as info:
+        fetch_osap(
+            cfg,
+            openap_factory=lambda vintage: revised_factory,
+            sleep=lambda _: None,
+            updater=second,
+        )
+    rejected = cfg.osap.raw_dir / "202510" / "port_op.csv.rejected"
+    actual = sha256_file(rejected)
+    message = str(info.value)
+    assert "data/raw/202510/port_op.csv" in message
+    assert expected.sha256 in message
+    assert actual in message
+    assert "port_op.csv.rejected" in message
+    assert not port_path.exists()
+    assert manifest.read_bytes() == original
+    assert second.added == []
+    assert second.updated == []
+
+
+def test_fetch_osap_update_manifest_accepts_revised_download(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    updater = _updater(cfg)
+    fetch_osap(cfg, openap_factory=lambda vintage: factory, sleep=lambda _: None, updater=updater)
+    manifest = updater.save()
+    port_path = cfg.osap.raw_dir / "202510" / "port_op.csv"
+    old_hash = sha256_file(port_path)
+    port_path.unlink()
+
+    revised = port_frame().with_columns(pl.lit(0.6).alias("ret"))
+    revised_factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": revised})
+    second = _updater(cfg, update=True)
+    written = fetch_osap(
+        cfg,
+        openap_factory=lambda vintage: revised_factory,
+        sleep=lambda _: None,
+        updater=second,
+    )
+    assert written == [port_path]
+    assert not port_path.with_name("port_op.csv.rejected").exists()
+    assert second.updated == ["data/raw/202510/port_op.csv"]
+    second.save()
+    entry = {item.path: item for item in read_manifest(manifest)}["data/raw/202510/port_op.csv"]
+    assert entry.sha256 == sha256_file(port_path)
+    assert entry.sha256 != old_hash
+
+
+def test_fetch_french_skips_cached_pinned_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    responses = {
+        "https://example.invalid/ff5.zip": FF5_ZIP,
+        "https://example.invalid/umd.zip": UMD_ZIP,
+    }
+    updater = _updater(cfg)
+    fetch_french(
+        cfg,
+        session=FakeSession(responses),  # type: ignore[arg-type]
+        sleep=lambda _: None,
+        updater=updater,
+    )
+    updater.save()
+    capsys.readouterr()
+
+    second = _updater(cfg)
+    written = fetch_french(
+        cfg,
+        session=FakeSession({}),  # type: ignore[arg-type]
+        sleep=lambda _: None,
+        updater=second,
+    )
+    assert written == []
+    out = capsys.readouterr().out
+    assert "cached: data/pinned/ff5_monthly.csv" in out
+    assert "cached: data/pinned/umd_monthly.csv" in out
+
+
+def test_fetch_french_refresh_updates_changed_manifest_entries(tmp_path: Path) -> None:
+    zeros = "0" * 64
+    cfg = make_config(tmp_path, ff5_sha256=zeros, umd_sha256=zeros)
+    _write_config_file(tmp_path, cfg)
+    session = FakeSession(
+        {"https://example.invalid/ff5.zip": FF5_ZIP, "https://example.invalid/umd.zip": UMD_ZIP}
+    )
+    updater = _updater(cfg)
+    fetch_french(
+        cfg,
+        refresh=True,
+        session=session,  # type: ignore[arg-type]
+        sleep=lambda _: None,
+        updater=updater,
+    )
+    manifest = updater.save()
+    assert manifest is not None
+    entries = {entry.path: entry for entry in read_manifest(manifest)}
+    assert entries["data/pinned/ff5_monthly.csv"].sha256 == sha256_file(
+        cfg.french.pinned_dir / "ff5_monthly.csv"
+    )
+    assert sorted(entry for entry in entries if entry.startswith("data/raw/ff/"))
+
+
+def test_manifest_scan_ignores_rejected_and_tmp_files(tmp_path: Path) -> None:
+    cfg = make_config(tmp_path)
+    osap_dir = cfg.osap.raw_dir / "202510"
+    osap_dir.mkdir(parents=True)
+    (osap_dir / "port_op.csv").write_bytes(b"a\n")
+    (osap_dir / "port_op.csv.rejected").write_bytes(b"b\n")
+    (osap_dir / "port_op.csv.tmp").write_bytes(b"c\n")
+    manifest = write_manifest(cfg, "all")
+    assert [entry.path for entry in read_manifest(manifest)] == ["data/raw/202510/port_op.csv"]
+
+
 # --- CLI --------------------------------------------------------------------
 
 
@@ -405,6 +620,100 @@ def test_verify_cli_reports_mismatch_with_nonzero_exit(
     assert exit_code == 1
     assert "mismatch: data/pinned/ff5_monthly.csv" in out
     assert "all hashes match" not in out
+
+
+def test_fetch_cli_second_run_is_cache_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    config_path = _write_config_file(tmp_path, cfg)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    monkeypatch.setattr(fetch_module, "_default_openap", lambda vintage: factory)
+
+    assert main(["--osap", "--config", str(config_path)]) == 0
+    first_out = capsys.readouterr().out
+    assert "wrote data/raw/202510/signal_doc.csv" in first_out
+    assert "wrote data/raw/202510/port_op.csv" in first_out
+    assert "wrote data/manifest.lock" in first_out
+
+    def must_not_download(vintage: int) -> Any:
+        raise AssertionError("downloader called for a cached file")
+
+    monkeypatch.setattr(fetch_module, "_default_openap", must_not_download)
+    assert main(["--osap", "--config", str(config_path)]) == 0
+    second_out = capsys.readouterr().out
+    assert "cached: data/raw/202510/signal_doc.csv" in second_out
+    assert "cached: data/raw/202510/port_op.csv" in second_out
+    assert "manifest unchanged" in second_out
+
+
+def test_fetch_cli_mismatch_exits_nonzero_and_keeps_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    config_path = _write_config_file(tmp_path, cfg)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    monkeypatch.setattr(fetch_module, "_default_openap", lambda vintage: factory)
+    assert main(["--osap", "--config", str(config_path)]) == 0
+    capsys.readouterr()
+    manifest_path = tmp_path / "data" / "manifest.lock"
+    original = manifest_path.read_bytes()
+
+    port_path = cfg.osap.raw_dir / "202510" / "port_op.csv"
+    port_path.unlink()
+    revised = FakeOpenAP(
+        doc=signal_doc_frame(),
+        ports={"op": port_frame().with_columns(pl.lit(0.6).alias("ret"))},
+    )
+    monkeypatch.setattr(fetch_module, "_default_openap", lambda vintage: revised)
+    assert main(["--osap", "--config", str(config_path)]) == 1
+    err = capsys.readouterr().err
+    assert "fetch failed:" in err
+    assert "SHA-256 mismatch" in err
+    assert "data/raw/202510/port_op.csv.rejected" in err
+    assert (cfg.osap.raw_dir / "202510" / "port_op.csv.rejected").is_file()
+    assert manifest_path.read_bytes() == original
+
+
+def test_fetch_cli_malformed_manifest_exits_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    config_path = _write_config_file(tmp_path, cfg)
+    manifest_path = tmp_path / "data" / "manifest.lock"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text("not a manifest line\n", encoding="utf-8")
+    assert main(["--osap", "--config", str(config_path)]) == 1
+    err = capsys.readouterr().err
+    assert "fetch failed:" in err
+    assert "malformed manifest line" in err
+
+
+def test_fetch_cli_update_manifest_accepts_revised_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    config_path = _write_config_file(tmp_path, cfg)
+    factory = FakeOpenAP(doc=signal_doc_frame(), ports={"op": port_frame()})
+    monkeypatch.setattr(fetch_module, "_default_openap", lambda vintage: factory)
+    assert main(["--osap", "--config", str(config_path)]) == 0
+    capsys.readouterr()
+
+    port_path = cfg.osap.raw_dir / "202510" / "port_op.csv"
+    old_hash = sha256_file(port_path)
+    port_path.unlink()
+    revised = FakeOpenAP(
+        doc=signal_doc_frame(),
+        ports={"op": port_frame().with_columns(pl.lit(0.6).alias("ret"))},
+    )
+    monkeypatch.setattr(fetch_module, "_default_openap", lambda vintage: revised)
+    assert main(["--osap", "--update-manifest", "--config", str(config_path)]) == 0
+    out = capsys.readouterr().out
+    assert "wrote data/raw/202510/port_op.csv" in out
+    assert "wrote data/manifest.lock" in out
+    entries = {entry.path: entry for entry in read_manifest(tmp_path / "data" / "manifest.lock")}
+    assert entries["data/raw/202510/port_op.csv"].sha256 == sha256_file(port_path)
+    assert entries["data/raw/202510/port_op.csv"].sha256 != old_hash
 
 
 # --- config loader ----------------------------------------------------------

@@ -12,8 +12,9 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from anomaly_decay.config import load_specifications
+from anomaly_decay.config import load_phase2_preregistration, load_specifications
 from anomaly_decay.estimate.vintages import (
+    PREDICTOR_SET,
     VINTAGE_SPEC_IDS,
     VintageComparison,
     VintageComparisonError,
@@ -30,13 +31,9 @@ SOURCE_VINTAGE = 202510
 COMPARE_VINTAGE = 202410
 SUPPLEMENT = REPO / "config" / "predictor_dates_supplement.csv"
 SPECS = REPO / "config" / "specifications.yaml"
+PREREG = REPO / "config" / "phase2_preregistration.yaml"
 PINNED = FIXTURES / "data" / "pinned"
 CSV_OVERRIDES: dict[str, pl.DataTypeClass] = {"port": pl.Utf8, "date": pl.Utf8}
-
-pytestmark = pytest.mark.skipif(
-    "vintage_comparison.csv" not in RESULTS_SCHEMAS,
-    reason="Phase 2 results schemas not merged yet",
-)
 
 
 def _fixture_acronyms() -> list[str]:
@@ -337,3 +334,17 @@ def test_repo_config_allows_the_preference_order() -> None:
     from anomaly_decay.data.fetch import load_compare_vintages
 
     assert load_compare_vintages(REPO / "config" / "data.toml") == (202410, 202408, 2023)
+
+
+def test_specs_and_predictor_set_match_the_pre_registration() -> None:
+    if not PREREG.is_file():
+        pytest.skip("config/phase2_preregistration.yaml is not merged yet (issue #57)")
+    from anomaly_decay.data.fetch import load_compare_vintages
+
+    prereg = load_phase2_preregistration(PREREG)
+    assert tuple(prereg.vintages.specs) == VINTAGE_SPEC_IDS
+    assert prereg.vintages.predictor_set == PREDICTOR_SET
+    assert prereg.vintages.primary == SOURCE_VINTAGE
+    assert load_compare_vintages(REPO / "config" / "data.toml") == tuple(
+        prereg.vintages.compare_preference
+    )

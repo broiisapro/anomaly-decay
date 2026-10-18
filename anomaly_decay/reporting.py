@@ -27,8 +27,10 @@ if TYPE_CHECKING:
 
 __all__ = [
     "NA_TEXT",
+    "comparison_word",
     "data_config",
     "direction",
+    "factor",
     "figure",
     "figure_block",
     "load",
@@ -39,6 +41,8 @@ __all__ = [
     "num",
     "original_paper",
     "pct",
+    "pp_gap",
+    "ratio",
     "ratio_pct",
     "results_dir",
     "table",
@@ -186,17 +190,67 @@ def magnitude(value: float | int | None) -> float | int | None:
     return abs(value)
 
 
+def ratio(numerator: float | int | None, denominator: float | int | None) -> float | None:
+    """``numerator / denominator`` as a plain ratio.
+
+    ``None`` when either input is missing or ``NaN``, or when *denominator* is zero, so
+    inline expressions can pass the result to a formatter without crashing a render.
+    """
+    if numerator is None or denominator is None:
+        return None
+    if math.isnan(numerator) or math.isnan(denominator) or denominator == 0:
+        return None
+    return numerator / denominator
+
+
 def ratio_pct(numerator: float | int | None, denominator: float | int | None) -> float | None:
     """``100 * numerator / denominator`` as a percent value.
 
     ``None`` when either input is missing or ``NaN``, or when *denominator* is zero, so
     the result can be passed straight to :func:`pct` from an inline expression.
     """
-    if numerator is None or denominator is None:
-        return None
-    if math.isnan(numerator) or math.isnan(denominator) or denominator == 0:
-        return None
-    return 100.0 * numerator / denominator
+    value = ratio(numerator, denominator)
+    return None if value is None else 100.0 * value
+
+
+def comparison_word(left: float | int | None, right: float | int | None) -> str:
+    """Word for where *left* sits relative to *right*: above, below or equal to it.
+
+    Comparison prose ("the replication's estimate sits *below* the paper's") gets its
+    direction here, so the wording follows the numbers instead of being asserted.
+    """
+    if left is None or right is None:
+        return NA_TEXT
+    if math.isnan(left) or math.isnan(right):
+        return NA_TEXT
+    if left > right:
+        return "above"
+    if left < right:
+        return "below"
+    return "equal to"
+
+
+def pp_gap(left: float | int | None, right: float | int | None, digits: int = 1) -> str:
+    """Magnitude of ``left - right`` in percentage points, e.g. ``'4.2 pp'``.
+
+    Used for gaps between two percent values (decay estimates); the direction comes from
+    :func:`comparison_word` so the sentence never hard-codes which value is larger.
+    """
+    if left is None or right is None:
+        return NA_TEXT
+    if math.isnan(left) or math.isnan(right):
+        return NA_TEXT
+    return f"{abs(left - right):.{digits}f} pp"
+
+
+def factor(value: float | int | None, base: float | int | None, digits: int = 2) -> str:
+    """``|value / base|`` as e.g. ``'1.48×'`` — a magnitude, never a signed ratio."""
+    if base is None:
+        return NA_TEXT
+    quotient = ratio(value, base)
+    if quotient is None:
+        return NA_TEXT
+    return f"{abs(quotient):.{digits}f}×"
 
 
 def month_label(value: object) -> str:

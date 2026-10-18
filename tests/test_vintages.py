@@ -254,7 +254,7 @@ def test_empty_intersection_is_rejected(tmp_path: Path) -> None:
 def test_missing_signal_doc_is_rejected(tmp_path: Path) -> None:
     data_dir = tmp_path / "data" / "raw"
     _write_vintage(data_dir, SOURCE_VINTAGE)
-    with pytest.raises(VintageComparisonError, match="signal doc not found"):
+    with pytest.raises(VintageComparisonError, match="canonical file not found"):
         build_vintage_comparison(
             data_dir,
             (COMPARE_VINTAGE, SOURCE_VINTAGE),

@@ -32,7 +32,7 @@ import polars as pl
 
 from anomaly_decay.config import Spec, load_data_config, load_specifications
 from anomaly_decay.data.fetch import load_compare_vintages
-from anomaly_decay.data.metadata import build_metadata
+from anomaly_decay.data.metadata import MetadataError, build_metadata
 from anomaly_decay.estimate.main import EstimationError, decay_table, run_spec
 from anomaly_decay.io import write_results
 from anomaly_decay.panel.build import build_panel
@@ -208,8 +208,10 @@ def build_vintage_comparison(
     panels: dict[int, pl.DataFrame] = {}
     for vintage in ordered:
         signal_doc = data_dir / str(vintage) / "signal_doc.csv"
-        if not signal_doc.is_file():
-            raise VintageComparisonError(f"canonical signal doc not found: {signal_doc}")
+        port_op = data_dir / str(vintage) / "port_op.csv"
+        for path in (signal_doc, port_op):
+            if not path.is_file():
+                raise VintageComparisonError(f"canonical file not found: {path}")
         metadata[vintage] = build_metadata(signal_doc, supplement_path)
         panels[vintage] = build_panel(
             data_dir, metadata[vintage], ("op",), pinned_dir=pinned_dir, vintage=vintage
@@ -320,7 +322,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             results_dir=args.results_dir,
             primary=primary,
         )
-    except (VintageComparisonError, EstimationError) as exc:
+    except (VintageComparisonError, EstimationError, MetadataError) as exc:
         print(f"vintage comparison failed: {exc}", file=sys.stderr)
         return 1
     _print_summary(comparison, primary if primary is not None else max(vintages))

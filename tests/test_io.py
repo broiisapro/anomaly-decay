@@ -24,6 +24,10 @@ RESULTS_SORT_KEY_ORDERS: dict[str, list[list[object]]] = {
     "predictor_summary.csv": [["Mom12m", "post_sample"], ["Mom12m", "in_sample"]],
     "event_time.csv": [["publication", 1], ["publication", 0]],
     "coverage.csv": [["z_item"], ["a_item"]],
+    "bootstrap.csv": [["b_spec", "pb"], ["a_spec", "ps"]],
+    "multiple_testing.csv": [["b_spec", "pb"], ["a_spec", "ps"]],
+    "tstat_summary.csv": [["z_source"], ["a_source"]],
+    "vintage_comparison.csv": [["b_spec", 202410, "pb"], ["a_spec", 202510, "ps"]],
 }
 
 

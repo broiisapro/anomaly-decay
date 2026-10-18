@@ -49,6 +49,10 @@ def test_results_schemas_cover_every_documented_file() -> None:
         "predictor_summary.csv",
         "event_time.csv",
         "coverage.csv",
+        "bootstrap.csv",
+        "multiple_testing.csv",
+        "tstat_summary.csv",
+        "vintage_comparison.csv",
     }
     for name, schema in RESULTS_SCHEMAS.items():
         validate_frame(_valid_results_frame(name), schema)

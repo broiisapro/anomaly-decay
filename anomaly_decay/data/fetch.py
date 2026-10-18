@@ -360,6 +360,7 @@ def fetch_osap(
         names = cfg.osap.portfolios if release == cfg.osap.vintage else NON_PRIMARY_PORTFOLIOS
     else:
         names = tuple(portfolios)
+    names = tuple(dict.fromkeys(names))
     if not names:
         raise FetchError("fetch_osap: at least one portfolio is required")
     osap_dir = cfg.osap.raw_dir / str(release)

@@ -514,6 +514,19 @@ def test_report_references_every_figure() -> None:
         assert f'"{name}"' in text, f"figure not referenced: {name}"
 
 
+def test_report_puts_the_headline_result_first() -> None:
+    """The main table and the event-time figure come before the details sections."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    question = text.index("# Question")
+    headline = text.index("# Headline result")
+    data = text.index("# Data")
+    assert question < headline < data
+    section = text[headline:data]
+    assert "reporting.figure_block(" in section
+    assert '"event_time"' in section
+    assert '"n_predictors"' in section
+
+
 @pytest.mark.parametrize("name", FIXTURE_FILES)
 def test_results_fixture_loads_against_its_schema(name: str) -> None:
     frame = reporting.load(name, where=FIXTURE_DIR)

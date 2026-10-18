@@ -6,6 +6,10 @@
 [osap]
 vintage = 202510
 portfolios = ["op", "deciles_ew", "deciles_vw"]
+# Phase 2 vintage comparison: earlier releases in the pre-registered preference order
+# (config/phase2_preregistration.yaml, `vintages.compare_preference`). Fetched with
+# `python -m anomaly_decay.data.fetch --osap --vintage N` (signal doc + op only).
+compare_vintages = [202410, 202408, 2023]
 raw_dir = "data/raw"
 
 [french]

@@ -13,10 +13,19 @@ with an existing entry is kept as ``<path>.rejected``, fails the run and leaves 
 manifest untouched. Entries are added when a file has none (first-time cache population);
 changing an existing entry requires ``--update-manifest``.
 
+Most calls fetch the primary ``[osap] vintage`` and its configured portfolios. Phase 2's
+vintage comparison additionally fetches an earlier release into its own
+``data/raw/<vintage>/`` directory from the same validated pipeline; those calls pass an
+explicit ``--vintage`` (the CLI fetches the signal doc and the ``op`` portfolios only —
+the comparison needs nothing else). Legacy signal-doc headers are renamed by the explicit
+:data:`SIGNAL_DOC_RENAMES` table; a release whose header is not covered by it fails
+validation loudly with the observed columns.
+
 CLI::
 
     python -m anomaly_decay.data.fetch [--osap] [--french] [--refresh-french]
-                                       [--verify] [--update-manifest]
+                                       [--vintage N] [--portfolios a,b] [--verify]
+                                       [--update-manifest]
                                        [--manifest-scope {all,pinned,fixture}]
 """
 
@@ -28,6 +37,7 @@ import os
 import re
 import sys
 import time
+import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -62,6 +72,15 @@ SIGNAL_DOC_REQUIRED: tuple[str, ...] = (
     "SampleEndYear",
     "Year",
 )
+# Explicit legacy SignalDoc column renames, applied for every release before validation.
+# The 2023.08, 2024.08 and 2024.10 headers were checked against the OSAP CrossSection
+# repository history and match the canonical header, so no entry is needed for the
+# vintages in `compare_vintages`; a release that renames a required column without an
+# entry here fails loudly in `_validate_signal_doc` with the columns it did find.
+SIGNAL_DOC_RENAMES: dict[str, str] = {}
+# A non-primary vintage is fetched for the vintage comparison, which needs the signal
+# doc and the `op` long-short rows only; the decile files are large and unused there.
+NON_PRIMARY_PORTFOLIOS: tuple[str, ...] = ("op",)
 MIN_PORT_ROWS = 1000
 MIN_SIGNAL_DOC_ROWS = 100
 MAX_ATTEMPTS = 5
@@ -134,6 +153,20 @@ def _validate_port(df: pl.DataFrame, name: str) -> pl.DataFrame:
     return df
 
 
+def _apply_signal_doc_renames(df: pl.DataFrame) -> pl.DataFrame:
+    """Rename legacy signal-doc columns per :data:`SIGNAL_DOC_RENAMES`.
+
+    Only names in the table are touched, and only when the canonical name is absent, so
+    a release that already uses canonical names is passed through unchanged.
+    """
+    renames = {
+        old: new
+        for old, new in SIGNAL_DOC_RENAMES.items()
+        if old in df.columns and new not in df.columns
+    }
+    return df.rename(renames) if renames else df
+
+
 def _validate_signal_doc(df: pl.DataFrame) -> pl.DataFrame:
     if df.height < MIN_SIGNAL_DOC_ROWS:
         raise FetchError(
@@ -142,8 +175,28 @@ def _validate_signal_doc(df: pl.DataFrame) -> pl.DataFrame:
         )
     missing = [column for column in SIGNAL_DOC_REQUIRED if column not in df.columns]
     if missing:
-        raise FetchError(f"signal doc: missing columns {missing}; got {df.columns}")
+        raise FetchError(
+            f"signal doc: missing columns {missing} after applying "
+            f"SIGNAL_DOC_RENAMES; got {df.columns}"
+        )
     return df
+
+
+def load_compare_vintages(config_path: Path) -> tuple[int, ...]:
+    """Read ``[osap] compare_vintages`` from ``config/data.toml``.
+
+    The list is the pre-registered preference order of earlier OSAP releases for the
+    vintage comparison (Phase 2). Unknown or absent keys yield an empty tuple so the
+    loader can be used against minimal test configurations.
+    """
+    config_path = Path(config_path)
+    with config_path.open("rb") as fh:
+        data = tomllib.load(fh)
+    osap = data.get("osap", {})
+    raw = osap.get("compare_vintages", [])
+    if not isinstance(raw, list) or not all(isinstance(v, int) for v in raw):
+        raise FetchError(f"{config_path}: [osap] compare_vintages must be a list of integers")
+    return tuple(raw)
 
 
 @dataclass(frozen=True)
@@ -282,11 +335,19 @@ class ManifestUpdater:
 def fetch_osap(
     cfg: DataConfig,
     *,
+    vintage: int | None = None,
+    portfolios: Sequence[str] | None = None,
     openap_factory: Callable[[int], Any] | None = None,
     sleep: Callable[[float], None] = time.sleep,
     updater: ManifestUpdater | None = None,
 ) -> list[Path]:
-    """Fetch the OSAP signal doc and configured portfolios into the canonical cache.
+    """Fetch one OSAP release's signal doc and portfolios into the canonical cache.
+
+    *vintage* defaults to the pinned ``[osap] vintage``; passing an earlier release
+    fetches it into its own ``data/raw/<vintage>/`` directory through the same
+    validation and canonical write. *portfolios* defaults to the configured list for
+    the pinned vintage and to :data:`NON_PRIMARY_PORTFOLIOS` (``op`` only) for any
+    other release, which is all the vintage comparison needs.
 
     Returns the paths written by this call. With *updater*, a file whose cached copy
     matches its manifest entry is skipped and reported as ``cached: <path>``; an existing
@@ -294,9 +355,16 @@ def fetch_osap(
     validated and written atomically. A frame that fails validation (wrong columns, too
     few rows, non-numeric ``ret``) raises :class:`FetchError`.
     """
-    osap_dir = cfg.osap.raw_dir / str(cfg.osap.vintage)
+    release = cfg.osap.vintage if vintage is None else vintage
+    if portfolios is None:
+        names = cfg.osap.portfolios if release == cfg.osap.vintage else NON_PRIMARY_PORTFOLIOS
+    else:
+        names = tuple(portfolios)
+    if not names:
+        raise FetchError("fetch_osap: at least one portfolio is required")
+    osap_dir = cfg.osap.raw_dir / str(release)
     targets: list[tuple[str, Path]] = [("signal_doc", osap_dir / "signal_doc.csv")]
-    targets += [(f"port_{name}", osap_dir / f"port_{name}.csv") for name in cfg.osap.portfolios]
+    targets += [(f"port_{name}", osap_dir / f"port_{name}.csv") for name in names]
 
     todo: list[tuple[str, Path]] = []
     for label, dest in targets:
@@ -317,18 +385,20 @@ def fetch_osap(
     if todo:
         factory = _default_openap if openap_factory is None else openap_factory
         api = _retry(
-            lambda: factory(cfg.osap.vintage),
+            lambda: factory(release),
             sleep=sleep,
-            description=f"open OSAP release {cfg.osap.vintage}",
+            description=f"open OSAP release {release}",
         )
 
     written: list[Path] = []
     for label, dest in todo:
         if label == "signal_doc":
             frame = _retry(
-                lambda: _validate_signal_doc(api.dl_signal_doc(df_backend="polars")),
+                lambda: _validate_signal_doc(
+                    _apply_signal_doc_renames(api.dl_signal_doc(df_backend="polars"))
+                ),
                 sleep=sleep,
-                description="OSAP signal doc",
+                description=f"OSAP {release} signal doc",
             )
             sort_by = ["Acronym"]
         else:
@@ -337,7 +407,7 @@ def fetch_osap(
             def load_port(portfolio: str = name) -> pl.DataFrame:
                 return _validate_port(api.dl_port(portfolio, df_backend="polars"), portfolio)
 
-            frame = _retry(load_port, sleep=sleep, description=f"OSAP portfolio {name}")
+            frame = _retry(load_port, sleep=sleep, description=f"OSAP {release} portfolio {name}")
             frame = frame.select(PORT_COLUMNS)
             sort_by = ["signalname", "port", "date"]
         rel = dest.relative_to(cfg.root).as_posix()
@@ -592,6 +662,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--osap", action="store_true", help="fetch the OSAP files only")
     parser.add_argument("--french", action="store_true", help="fetch the Ken French files only")
     parser.add_argument(
+        "--vintage",
+        type=int,
+        default=None,
+        help=(
+            "OSAP release to fetch (default: the pinned vintage); a non-primary "
+            "release fetches the signal doc and op portfolios only"
+        ),
+    )
+    parser.add_argument(
+        "--portfolios",
+        default=None,
+        help="comma-separated portfolio names (default: config portfolios, or op)",
+    )
+    parser.add_argument(
         "--refresh-french",
         action="store_true",
         help="re-download Ken French files and update the pinned hashes in config/data.toml",
@@ -625,12 +709,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     do_osap = args.osap or not selectors
     do_french = args.french or args.refresh_french or not selectors
 
+    portfolios: tuple[str, ...] | None = None
+    if args.portfolios is not None:
+        portfolios = tuple(name for name in args.portfolios.split(",") if name)
+        if not portfolios:
+            print("fetch failed: --portfolios is empty", file=sys.stderr)
+            return 1
+
     try:
         updater = ManifestUpdater(
             manifest_path_for(cfg, "all"), cfg.root, update=args.update_manifest
         )
         if do_osap:
-            fetch_osap(cfg, updater=updater)
+            fetch_osap(cfg, vintage=args.vintage, portfolios=portfolios, updater=updater)
         if do_french:
             fetch_french(cfg, refresh=args.refresh_french, updater=updater)
         manifest_path = updater.save()

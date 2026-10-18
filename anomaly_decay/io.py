@@ -30,6 +30,10 @@ RESULTS_SORT_KEYS: dict[str, tuple[str, ...]] = {
     "predictor_summary.csv": ("signalname", "window"),
     "event_time.csv": ("anchor", "event_month"),
     "coverage.csv": ("item",),
+    "bootstrap.csv": ("spec", "statistic"),
+    "multiple_testing.csv": ("spec", "term"),
+    "tstat_summary.csv": ("tstat_source",),
+    "vintage_comparison.csv": ("spec", "vintage", "term"),
 }
 """Row sort order for every file in :data:`~anomaly_decay.schemas.RESULTS_SCHEMAS`."""
 

@@ -261,64 +261,76 @@ status.
 # Main result vs the original paper
 
 ```{python}
-if main is None:
-    comparison = None
-else:
-    comparison = pl.DataFrame(
-        {
-            "term": ["post_sample", "post_publication"],
-            "coef": [main_value("post_sample", "coef"), main_value("post_publication", "coef")],
-            "se": [main_value("post_sample", "se"), main_value("post_publication", "se")],
-            "t": [main_value("post_sample", "t"), main_value("post_publication", "t")],
-            "n_predictors": [
-                main_value("post_sample", "n_predictors"),
-                main_value("post_publication", "n_predictors"),
-            ],
-            "n_obs": [
-                main_value("post_sample", "n_obs"),
-                main_value("post_publication", "n_obs"),
-            ],
-        }
-    )
+def paper_coef_se_cell(term: str) -> str:
+    coef, se = paper_term(term, "coef"), paper_term(term, "se")
+    if coef is None or se is None:
+        return f"*{PAPER_STATUS}*"
+    return f"{reporting.num(coef, 3)} ({reporting.num(se, 3)})"
 
-comparison_view = render_table(
-    comparison,
-    ["term", "coef", "se", "t", "n_predictors", "n_obs"],
-    ["Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
-    formats={
-        "coef": lambda value: reporting.num(value, 3),
-        "se": lambda value: reporting.num(value, 3),
-        "t": reporting.tstat,
-    },
-    missing="`main.csv` has not been produced yet; the main estimates render here after the estimation stage runs.",
+
+def paper_decay_cell(term: str) -> str:
+    computed = paper_decline_pct(term)
+    headline = PAPER_HEADLINE.get(f"{term}_decline_pct")
+    if computed is None:
+        return f"*{PAPER_STATUS}*"
+    return f"{reporting.pct(computed)} (headline {reporting.pct(headline, 0)})"
+
+
+repl_decay_sample = decay_value("pooled_ratio", "post_sample", "decay_pct")
+repl_decay_publication = decay_value("pooled_ratio", "post_publication", "decay_pct")
+paper_decay_sample = paper_decline_pct("post_sample")
+paper_decay_publication = paper_decline_pct("post_publication")
+paper_t_sample = reporting.ratio(
+    paper_term("post_sample", "coef"), paper_term("post_sample", "se")
 )
-comparison_view
-```
 
-```{python}
 if main is None:
-    paper_comparison = None
+    comparison_rows = None
 else:
-    terms = ["post_sample", "post_publication"]
-    paper_comparison = pl.DataFrame(
+    comparison_rows = pl.DataFrame(
         {
-            "term": terms,
+            "quantity": [
+                "Post-sample coefficient (SE), %/mo",
+                "Post-publication coefficient (SE), %/mo",
+                "Predictors in the main sample",
+                "Observations in the main sample",
+                "In-sample mean, %/mo",
+                "Standard errors",
+                "Pooled-ratio decline, post-sample",
+                "Pooled-ratio decline, post-publication",
+            ],
             "replication": [
-                pair_cell(main_value(term, "coef"), main_value(term, "se")) for term in terms
+                pair_cell(main_value("post_sample", "coef"), main_value("post_sample", "se")),
+                pair_cell(
+                    main_value("post_publication", "coef"), main_value("post_publication", "se")
+                ),
+                reporting.num(main_value("post_sample", "n_predictors"), 0),
+                reporting.num(main_value("post_sample", "n_obs"), 0),
+                reporting.num(decay_value("pooled_ratio", "post_sample", "in_sample_mean"), 3),
+                "Predictor fixed effects; month-clustered",
+                reporting.pct(repl_decay_sample),
+                reporting.pct(repl_decay_publication),
             ],
             "paper": [
-                pair_cell(paper_term(term, "coef"), paper_term(term, "se")) for term in terms
+                paper_coef_se_cell("post_sample"),
+                paper_coef_se_cell("post_publication"),
+                reporting.num(PAPER_TABLE.get("n_predictors"), 0),
+                reporting.num(PAPER_TABLE.get("n_obs"), 0),
+                reporting.num(PAPER_IN_SAMPLE_MEAN, 3),
+                PAPER_TABLE.get("se_method") or reporting.NA_TEXT,
+                paper_decay_cell("post_sample"),
+                paper_decay_cell("post_publication"),
             ],
         }
     )
 
-paper_comparison_view = render_table(
-    paper_comparison,
-    ["term", "replication", "paper"],
-    ["Term", "This replication: coef (SE)", "McLean & Pontiff (2016): coef (SE)"],
-    missing="`main.csv` has not been produced yet; the comparison against the paper's entry in `config/original_paper.yaml` renders here after the estimation stage runs.",
+comparison_rows_view = render_table(
+    comparison_rows,
+    ["quantity", "replication", "paper"],
+    ["Quantity", "This replication", "McLean & Pontiff (2016), Table II col. 1"],
+    missing="The side-by-side table reads `main.csv`, `decay.csv` and `config/original_paper.yaml`; it renders here after the estimation stage runs.",
 )
-paper_comparison_view
+comparison_rows_view
 ```
 
 ```{python}
@@ -342,19 +354,46 @@ decay_table_view = render_table(
 decay_table_view
 ```
 
-The replication's post-sample coefficient is
-`{python} reporting.num(main_value("post_sample", "coef"), 3)` percent per month against the
-paper's `{python} reporting.num(paper_term("post_sample", "coef"), 3)`, and the post-publication
-coefficient is `{python} reporting.num(main_value("post_publication", "coef"), 3)` against the
-paper's `{python} reporting.num(paper_term("post_publication", "coef"), 3)`. Against the in-sample
-mean, the pooled-ratio estimate puts post-sample returns
-`{python} reporting.pct(decay_value("pooled_ratio", "post_sample", "decay_pct"))` and
-post-publication returns
-`{python} reporting.pct(decay_value("pooled_ratio", "post_publication", "decay_pct"))`; the
-normalized-regression estimates are
-`{python} reporting.pct(decay_value("normalized", "post_sample", "decay_pct"))` and
-`{python} reporting.pct(decay_value("normalized", "post_publication", "decay_pct"))`. The paper's
-values come from `config/original_paper.yaml` (status: *`{python} PAPER_STATUS`*).
+The first table places the replication's main estimates beside the paper's Table II, column 1. The
+standard-error calculations are not the same: this replication clusters by month inside a panel
+regression with predictor fixed effects, while the paper's estimates allow contemporaneous
+cross-correlation of portfolio residuals. The replication runs on
+`{python} reporting.num(main_value("post_sample", "n_predictors"), 0)` predictors and
+`{python} reporting.num(main_value("post_sample", "n_obs"), 0)` observations against the paper's
+`{python} reporting.num(PAPER_TABLE.get("n_predictors"), 0)` predictors and
+`{python} reporting.num(PAPER_TABLE.get("n_obs"), 0)` observations, so the two exercises share the
+measured object — the shift in long-short returns after the sample ends and after publication —
+but not their inputs.
+
+On the pooled-ratio scale the replication's post-sample decline is
+`{python} reporting.pct(repl_decay_sample)` against the paper's implied
+`{python} reporting.pct(paper_decay_sample)`, and the post-publication decline is
+`{python} reporting.pct(repl_decay_publication)` against
+`{python} reporting.pct(paper_decay_publication)`. The gaps are
+`{python} reporting.pp_gap(repl_decay_sample, paper_decay_sample)` and
+`{python} reporting.pp_gap(repl_decay_publication, paper_decay_publication)`, with the
+replication's post-sample estimate sitting
+`{python} reporting.comparison_word(repl_decay_sample, paper_decay_sample)` the paper's and its
+post-publication estimate sitting
+`{python} reporting.comparison_word(repl_decay_publication, paper_decay_publication)` the paper's.
+In magnitude the replication's post-sample coefficient is
+`{python} reporting.factor(main_value("post_sample", "coef"), paper_term("post_sample", "coef"))`
+the paper's and its post-publication coefficient is
+`{python} reporting.factor(main_value("post_publication", "coef"), paper_term("post_publication", "coef"))`
+the paper's.
+
+Three documented differences can move these numbers: the predictor universe (OSAP reconstructs
+each signal following its original paper, where McLean and Pontiff hand-collected their returns),
+the portfolio construction (`op` long-short series per signal versus the authors' own series) and
+the standard-error correction. None of them changes the question or the definition of the
+measured object, so the side-by-side comparison is the replication test, not an equality test on
+the coefficients.
+
+One further note on the source table: the paper prints the post-sample coefficient with three
+stars, but the printed coefficient and standard error imply t =
+`{python} reporting.tstat(paper_t_sample)`; the value is reproduced here exactly as printed, and
+the note in `config/original_paper.yaml` records the inconsistency. The paper's values come from
+`config/original_paper.yaml` (status: *`{python} PAPER_STATUS`*).
 
 # Robustness
 

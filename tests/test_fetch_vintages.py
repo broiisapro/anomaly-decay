@@ -412,6 +412,27 @@ def test_fetch_cli_vintage_with_explicit_portfolios(
     assert not (cfg.osap.raw_dir / str(COMPARE) / "port_deciles_vw.csv").exists()
 
 
+def test_fetch_cli_explicit_primary_vintage_keeps_the_full_portfolio_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = make_config(tmp_path)
+    config_path = _write_config_file(tmp_path, cfg)
+    monkeypatch.setattr(fetch_module, "_default_openap", fake_for)
+
+    exit_code = main(["--osap", "--vintage", str(PRIMARY), "--config", str(config_path)])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    for name in ("signal_doc.csv", "port_op.csv", "port_deciles_ew.csv", "port_deciles_vw.csv"):
+        assert f"wrote data/raw/{PRIMARY}/{name}" in out
+    entries = {entry.path for entry in read_manifest(tmp_path / "data" / "manifest.lock")}
+    assert entries == {
+        f"data/raw/{PRIMARY}/signal_doc.csv",
+        f"data/raw/{PRIMARY}/port_op.csv",
+        f"data/raw/{PRIMARY}/port_deciles_ew.csv",
+        f"data/raw/{PRIMARY}/port_deciles_vw.csv",
+    }
+
+
 def test_fetch_cli_empty_portfolios_exits_nonzero(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

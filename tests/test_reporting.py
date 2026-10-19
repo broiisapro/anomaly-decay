@@ -267,6 +267,74 @@ def test_ratio_pct_feeds_pct_for_the_headline_decay() -> None:
 
 
 @pytest.mark.parametrize(
+    ("numerator", "denominator", "expected"),
+    [
+        (1.0, 4.0, 0.25),
+        (-0.150, 0.077, -1.948051948051948),
+        (0.0, 4.0, 0.0),
+        (1.0, 0.0, None),
+        (None, 4.0, None),
+        (1.0, None, None),
+        (float("nan"), 4.0, None),
+        (1.0, float("nan"), None),
+    ],
+)
+def test_ratio(numerator: float | None, denominator: float | None, expected: float | None) -> None:
+    result = reporting.ratio(numerator, denominator)
+    if expected is None:
+        assert result is None
+    else:
+        assert result == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        (2.0, 1.0, "above"),
+        (1.0, 2.0, "below"),
+        (-1.0, -1.0, "equal to"),
+        (None, 1.0, "n/a"),
+        (1.0, None, "n/a"),
+        (float("nan"), 1.0, "n/a"),
+        (1.0, float("nan"), "n/a"),
+    ],
+)
+def test_comparison_word(left: float | None, right: float | None, expected: str) -> None:
+    assert reporting.comparison_word(left, right) == expected
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "digits", "expected"),
+    [
+        (10.0, 7.5, 1, "2.5 pp"),
+        (7.5, 10.0, 1, "2.5 pp"),
+        (1.0, 1.0, 1, "0.0 pp"),
+        (-30.0, -25.77, 1, "4.2 pp"),
+        (None, 1.0, 1, "n/a"),
+        (1.0, float("nan"), 1, "n/a"),
+    ],
+)
+def test_pp_gap(left: float | None, right: float | None, digits: int, expected: str) -> None:
+    assert reporting.pp_gap(left, right, digits) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "base", "expected"),
+    [
+        (-0.666, -0.337, "1.98×"),
+        (0.5, 2.0, "0.25×"),
+        (-0.5, 2.0, "0.25×"),
+        (1.0, 0.0, "n/a"),
+        (None, 2.0, "n/a"),
+        (2.0, None, "n/a"),
+        (float("nan"), 2.0, "n/a"),
+    ],
+)
+def test_factor(value: float | None, base: float | None, expected: str) -> None:
+    assert reporting.factor(value, base) == expected
+
+
+@pytest.mark.parametrize(
     ("value", "expected"),
     [
         ("201312", "2013-12"),
@@ -444,6 +512,19 @@ def test_report_references_every_figure() -> None:
     text = QMD_PATH.read_text(encoding="utf-8")
     for name in ("event_time", "distribution", "coefplot"):
         assert f'"{name}"' in text, f"figure not referenced: {name}"
+
+
+def test_report_puts_the_headline_result_first() -> None:
+    """The main table and the event-time figure come before the details sections."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    question = text.index("# Question")
+    headline = text.index("# Headline result")
+    data = text.index("# Data")
+    assert question < headline < data
+    section = text[headline:data]
+    assert "reporting.figure_block(" in section
+    assert '"event_time"' in section
+    assert '"n_predictors"' in section
 
 
 @pytest.mark.parametrize("name", FIXTURE_FILES)

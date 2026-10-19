@@ -1,0 +1,21 @@
+spec,label,term,coef,se,t,n_predictors,n_obs
+clear_only,Clear predictors only,post_publication,-0.3871588700189131,0.08136491212802585,-4.758302564251865,155,81080
+clear_only,Clear predictors only,post_sample,-0.2525313608498353,0.0772284327269717,-3.269927304398601,155,81080
+ew_deciles,Equal-weighted decile long-short portfolios,post_publication,-0.36076051943200454,0.08872113957833883,-4.066229549649336,166,86235
+ew_deciles,Equal-weighted decile long-short portfolios,post_sample,-0.28311649661893923,0.08943348914431805,-3.16566533775817,166,86235
+factor_adj,"FF5 + momentum adjusted returns (in-sample betas), from 1963-07",post_publication,-0.17583793261370004,0.04760370422820865,-3.693786764381737,198,96089
+factor_adj,"FF5 + momentum adjusted returns (in-sample betas), from 1963-07",post_sample,-0.2094561683586424,0.044948526273873066,-4.6599118085077595,198,96089
+main,"Main: predictors published by 2013, returns through 2013-12",post_publication,-0.33678934630938023,0.07382922322297518,-4.561734928352511,198,101567
+main,"Main: predictors published by 2013, returns through 2013-12",post_sample,-0.23911917997018675,0.06777917902729005,-3.5279149644747063,198,101567
+main_dk,"Driscoll-Kraay SE (Bartlett kernel, 12 lags)",post_publication,-0.33678934630938023,0.07481220746113393,-4.5017966684694795,198,101567
+main_dk,"Driscoll-Kraay SE (Bartlett kernel, 12 lags)",post_sample,-0.23911917997018675,0.07203192000332831,-3.3196280198992056,198,101567
+main_twoway,Two-way clustered SE (month and predictor),post_publication,-0.33678934630938023,0.07233633104741234,-4.655880958195599,198,101567
+main_twoway,Two-way clustered SE (month and predictor),post_sample,-0.23911917997018675,0.07196582898165065,-3.32267665576611,198,101567
+normalized,Returns scaled by each predictor's in-sample mean,post_publication,-0.4812457596625693,0.11519686221699779,-4.177594340686472,195,99671
+normalized,Returns scaled by each predictor's in-sample mean,post_sample,-0.2809032737161876,0.11149335511277678,-2.519462020243725,195,99671
+pubconv_alt,Post-publication from January of the publication year,post_publication,-0.3287272318599452,0.06952431708286623,-4.728233884960485,198,101567
+pubconv_alt,Post-publication from January of the publication year,post_sample,-0.2330547239316237,0.07467285626123227,-3.1210099037368435,198,101567
+start_1963,Excluding predictors whose sample starts before 1963,post_publication,-0.3619678192937473,0.08674971582036824,-4.172553372316174,168,78017
+start_1963,Excluding predictors whose sample starts before 1963,post_sample,-0.2265335920685108,0.07239298336003226,-3.1292202856441285,168,78017
+vw_deciles,Value-weighted decile long-short portfolios,post_publication,-0.34662055646218654,0.08628436818288358,-4.017188324628034,166,86235
+vw_deciles,Value-weighted decile long-short portfolios,post_sample,-0.22040880313019498,0.08588349980649926,-2.5663696009919184,166,86235

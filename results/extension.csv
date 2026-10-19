@@ -1,0 +1,6 @@
+spec,label,term,coef,se,t,n_predictors,n_obs
+ext_pub_after_2000,Extension: post-publication decay for predictors published after 2000 vs before,post_publication,-0.30192152980903625,0.08473184766813951,-3.5632591300444805,212,136338
+ext_pub_after_2000,Extension: post-publication decay for predictors published after 2000 vs before,post_publication_x_pub_after_2000,-0.09710842428626289,0.10286674375736858,-0.9440215636193576,212,136338
+ext_pub_after_2000,Extension: post-publication decay for predictors published after 2000 vs before,post_sample,-0.24487355411512196,0.06495895440041217,-3.769665881715119,212,136338
+full_extension,"Extension: all predictors, returns through the vintage's last month",post_publication,-0.3694664053830738,0.05693417638003806,-6.4893606770890955,212,136338
+full_extension,"Extension: all predictors, returns through the vintage's last month",post_sample,-0.2466459616096248,0.06409707796823319,-3.8480063277122194,212,136338

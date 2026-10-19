@@ -35,6 +35,9 @@ jobs:
 
   tests:
     runs-on: [self-hosted, macOS, ARM64]
+    env:
+      # The freeze tag exists; a checkout without it (or a drifted frozen file) must fail.
+      ANOMALY_DECAY_REQUIRE_FREEZE: "1"
     steps:
       - uses: actions/checkout@v5
         with:

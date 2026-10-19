@@ -13,6 +13,7 @@ PINNED_DIR := data/pinned
 PROCESSED_DIR := data/processed
 RESULTS_DIR := results
 SPECS := config/specifications.yaml
+PREREG := config/phase2_preregistration.yaml
 PORTFOLIOS := op,deciles_ew,deciles_vw
 SIGNAL_DOC := $(DATA_DIR)/$(VINTAGE)/signal_doc.csv
 SUPPLEMENT := config/predictor_dates_supplement.csv
@@ -35,8 +36,13 @@ FIXTURE_HASHES_BEFORE := $(FIXTURE_PROCESSED_DIR)/results-hashes.before.txt
 FIXTURE_HASHES_AFTER := $(FIXTURE_PROCESSED_DIR)/results-hashes.after.txt
 FIXTURE_HASH_CMD = cd "$(CURDIR)/$(FIXTURE_RESULTS)" && find . -type f | LC_ALL=C sort | xargs shasum -a 256
 
+# Phase 2 CLIs (pre-registered analyses); the `phase2` target names any that do not exist yet.
+PHASE2_CLIS := anomaly_decay.estimate.bootstrap anomaly_decay.estimate.multiple_testing \
+               anomaly_decay.estimate.vintages
+
 .PHONY: fetch verify-hashes refresh-french metadata panel estimate descriptive \
         figures report report-placeholder report-fixture reproduce reproduce-fixture \
+        phase2 reproduce-phase2 \
         fixture-metadata fixture-panel fixture-panel-check fixture-results \
         lint types test
 
@@ -149,6 +155,34 @@ reproduce:
 	$(MAKE) estimate
 	$(MAKE) descriptive
 	$(MAKE) figures
+	$(MAKE) report
+
+# Phase 2 analyses, pre-registered in config/phase2_preregistration.yaml and frozen with the
+# specifications by the `specs-frozen` tag. Each CLI module is imported before use so that a
+# module that does not exist yet is named explicitly and the target fails instead of printing
+# three tracebacks.
+phase2: panel
+	@missing=""; for module in $(PHASE2_CLIS); do \
+		if ! uv run python -c "import $$module" >/dev/null 2>&1; then \
+			missing="$$missing $$module"; \
+		fi; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "phase2: CLI module(s) not available yet:$$missing"; \
+		exit 1; \
+	fi
+	uv run python -m anomaly_decay.estimate.bootstrap --panel $(PANEL) \
+		--prereg $(PREREG) --specs $(SPECS) --results-dir $(RESULTS_DIR) \
+		--seed 2027 --reps 2000
+	uv run python -m anomaly_decay.estimate.multiple_testing --panel $(PANEL) \
+		--signal-doc $(SIGNAL_DOC) --prereg $(PREREG) --specs $(SPECS) \
+		--results-dir $(RESULTS_DIR)
+	uv run python -m anomaly_decay.estimate.vintages --vintages 202410,$(VINTAGE) \
+		--data-dir $(DATA_DIR) --pinned-dir $(PINNED_DIR) --specs $(SPECS) \
+		--results-dir $(RESULTS_DIR)
+
+# Phase 2 results plus the report that reads them.
+reproduce-phase2: phase2
 	$(MAKE) report
 
 lint:

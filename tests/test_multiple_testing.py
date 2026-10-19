@@ -15,16 +15,25 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from anomaly_decay.config import load_phase2_preregistration, load_specifications
 from anomaly_decay.estimate.multiple_testing import (
     DEFAULT_HURDLE_T,
-    TSTAT_SUMMARY_SCHEMA,
     TSTATS_SCHEMA,
     TstatError,
+    run_multiple_testing,
     tstat_summary,
     tstats,
 )
+from anomaly_decay.estimate.multiple_testing import (
+    main as mt_cli,
+)
+from anomaly_decay.io import read_results
+from anomaly_decay.schemas import RESULTS_SCHEMAS, validate_frame
 
-from test_estimate import make_panel
+from test_estimate import SPECS_PATH, make_panel
+
+REPO_ROOT = Path(__file__).parents[1]
+FIXTURE_PANEL = REPO_ROOT / "tests" / "fixtures" / "panel_fixture.parquet"
 
 
 def write_signal_doc(
@@ -223,17 +232,9 @@ def test_tstats_output_schema(tmp_path: Path) -> None:
     assert out.columns == list(TSTATS_SCHEMA)
     assert out.schema == TSTATS_SCHEMA
 
-    assert {
-        "tstat_source": pl.Utf8,
-        "n_predictors": pl.Int64,
-        "n_missing": pl.Int64,
-        "n_below_hurdle": pl.Int64,
-        "median_t": pl.Float64,
-        "hurdle_t": pl.Float64,
-    } == TSTAT_SUMMARY_SCHEMA
     summary = tstat_summary(out)
-    assert summary.columns == list(TSTAT_SUMMARY_SCHEMA)
-    assert summary.schema == TSTAT_SUMMARY_SCHEMA
+    assert summary.columns == list(RESULTS_SCHEMAS["tstat_summary.csv"])
+    assert summary.schema == RESULTS_SCHEMAS["tstat_summary.csv"]
 
 
 def test_replicated_tstat_uses_the_sample_standard_deviation(tmp_path: Path) -> None:
@@ -290,3 +291,329 @@ def test_tstat_summary_median_is_null_when_everything_is_missing(tmp_path: Path)
 def test_tstat_summary_rejects_a_frame_without_the_t_columns() -> None:
     with pytest.raises(TstatError, match="missing columns"):
         tstat_summary(pl.DataFrame({"signalname": ["S"]}))
+
+
+PREREG_TEXT = """version: 1
+
+bootstrap:
+  id: bootstrap_main
+  base_spec: main
+  method: moving_block_by_month
+  block_length_months: 12
+  reps: 2000
+  seed: 2027
+  statistics: [coef_post_sample, coef_post_publication,
+               decay_pct_post_sample, decay_pct_post_publication]
+  interval: percentile
+  level: 0.95
+  exploratory: false
+
+multiple_testing:
+  hurdle_t: 3.0
+  weak_rule: tstat_below_hurdle
+  missing_tstat: exclude_and_count
+  tstat_sources:
+    original_paper: "OSAP SignalDoc column T-Stat"
+    in_sample_replicated: "mean / (sd / sqrt(n)) in-sample"
+  specs:
+    - id: mt_weak_original
+      base_spec: main
+      tstat_source: original_paper
+      extra_terms: [post_sample_x_weak, post_publication_x_weak]
+      exploratory: false
+    - id: mt_weak_replicated
+      base_spec: main
+      tstat_source: in_sample_replicated
+      extra_terms: [post_sample_x_weak, post_publication_x_weak]
+      exploratory: false
+    - id: mt_tstat_continuous
+      base_spec: main
+      tstat_source: in_sample_replicated
+      extra_terms: [post_sample_x_tstat, post_publication_x_tstat]
+      exploratory: false
+
+vintages:
+  primary: 202510
+  compare_preference: [202410]
+  predictor_set: intersection
+  specs: [main, full_extension]
+  metrics: [coef, se, decay_pct, n_predictors, n_obs]
+  exploratory: false
+"""
+
+
+def write_prereg(tmp_path: Path, text: str = PREREG_TEXT) -> Path:
+    path = tmp_path / "phase2_preregistration.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def write_mt_signal_doc(tmp_path: Path, tstats_map: dict[str, float | None]) -> Path:
+    path = tmp_path / "signal_doc_mt.csv"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["Acronym", "Cat.Signal", "T-Stat"])
+        for name, value in tstats_map.items():
+            writer.writerow([name, "Predictor", "" if value is None else f"{value}"])
+    return path
+
+
+def weak_decay_panel(amplitudes: dict[str, float] | None = None) -> pl.DataFrame:
+    """Four predictors, in-sample level 1.0, weak predictors decay more.
+
+    1963-1964 in-sample (level 1.0), 1965 post-sample, 1966 post-publication.
+    Strong predictors drop to 0.8 / 0.6 and weak ones to 0.4 / 0.1, so the exact
+    coefficients are post_sample -0.2, post_publication -0.4, post_sample_x_weak
+    -0.4 and post_publication_x_weak -0.5. Each predictor's alternating monthly
+    wiggle averages zero, so recovery is exact; its amplitude sets the
+    replicated t (small amplitude -> large t). The W amplitudes 1.7 and 1.9 give
+    replicated t 2.82 and 2.52, below the 3.0 hurdle, so the W group is weak
+    under both t-statistic sources.
+    """
+    if amplitudes is None:
+        amplitudes = {"W0": 1.7, "W1": 1.9, "S0": 0.10, "S1": 0.20}
+    records: list[dict[str, object]] = []
+    for signalname, amplitude in amplitudes.items():
+        weak = signalname.startswith("W")
+        for month_index in range(48):
+            year = 1963 + month_index // 12
+            if year <= 1964:
+                level, post_sample, post_publication = 1.0, 0, 0
+            elif year == 1965:
+                level, post_sample, post_publication = (0.4 if weak else 0.8), 1, 0
+            else:
+                level, post_sample, post_publication = (0.1 if weak else 0.6), 0, 1
+            wiggle = amplitude * (1 if month_index % 2 == 0 else -1)
+            records.append(
+                {
+                    "signalname": signalname,
+                    "yyyymm": year * 100 + month_index % 12 + 1,
+                    "ret": level + wiggle,
+                    "post_sample": post_sample,
+                    "post_publication": post_publication,
+                }
+            )
+    return make_panel(records)
+
+
+def mt_table(panel: pl.DataFrame, doc: Path, prereg_path: Path) -> pl.DataFrame:
+    stats = tstats(panel, doc)
+    prereg = load_phase2_preregistration(prereg_path)
+    return run_multiple_testing(
+        panel, stats, prereg.multiple_testing, load_specifications(SPECS_PATH)
+    )
+
+
+def test_weak_original_recovers_known_interactions(tmp_path: Path) -> None:
+    panel = weak_decay_panel()
+    doc = write_mt_signal_doc(tmp_path, {"W0": 1.0, "W1": 2.0, "S0": 5.0, "S1": 9.0})
+    table = mt_table(panel, doc, write_prereg(tmp_path))
+    rows = {
+        row["term"]: row
+        for row in table.filter(pl.col("spec") == "mt_weak_original").iter_rows(named=True)
+    }
+    assert set(rows) == {
+        "post_sample",
+        "post_publication",
+        "post_sample_x_weak",
+        "post_publication_x_weak",
+    }
+    assert rows["post_sample"]["coef"] == pytest.approx(-0.2, abs=1e-10)
+    assert rows["post_publication"]["coef"] == pytest.approx(-0.4, abs=1e-10)
+    assert rows["post_sample_x_weak"]["coef"] == pytest.approx(-0.4, abs=1e-10)
+    assert rows["post_publication_x_weak"]["coef"] == pytest.approx(-0.5, abs=1e-10)
+    assert rows["post_sample"]["n_predictors"] == 4
+    assert rows["post_sample"]["n_weak"] == 2
+    assert rows["post_sample"]["n_excluded_missing_t"] == 0
+    assert rows["post_sample"]["n_obs"] == 4 * 48
+    assert rows["post_sample"]["tstat_source"] == "original_paper"
+
+    # the same group is weak under the replicated source, so the replicated
+    # weak specification recovers the same known interactions
+    replicated = {
+        row["term"]: row
+        for row in table.filter(pl.col("spec") == "mt_weak_replicated").iter_rows(named=True)
+    }
+    assert replicated["post_sample_x_weak"]["coef"] == pytest.approx(-0.4, abs=1e-10)
+    assert replicated["post_publication_x_weak"]["coef"] == pytest.approx(-0.5, abs=1e-10)
+    assert replicated["post_sample"]["n_weak"] == 2
+
+
+def test_missing_t_predictors_are_excluded_and_counted(tmp_path: Path) -> None:
+    panel = weak_decay_panel()
+    doc = write_mt_signal_doc(tmp_path, {"W0": 1.0, "W1": 2.0, "S0": 5.0})
+    table = mt_table(panel, doc, write_prereg(tmp_path))
+    rows = {
+        row["term"]: row
+        for row in table.filter(pl.col("spec") == "mt_weak_original").iter_rows(named=True)
+    }
+    assert rows["post_sample"]["n_predictors"] == 3
+    assert rows["post_sample"]["n_excluded_missing_t"] == 1
+    assert rows["post_sample"]["n_obs"] == 3 * 48
+    assert rows["post_sample"]["n_weak"] == 2
+
+
+def continuous_panel() -> pl.DataFrame:
+    """Four predictors whose post-window changes are exactly linear in the replicated t.
+
+    Post-sample change is ``-0.5 + 0.005 * t`` and post-publication change is
+    ``-0.8 + 0.01 * t``, so the weaker the original evidence (smaller t) the
+    larger the decay, and the continuous interaction coefficients are exactly
+    0.005 and 0.01. The alternating wiggle amplitude ``sqrt(23) / t`` makes the
+    in-sample replicated t equal the intended value.
+    """
+    t_values = {"P0": 60.0, "P1": 30.0, "P2": 12.0, "P3": 2.5}
+    records: list[dict[str, object]] = []
+    for signalname, t in t_values.items():
+        amplitude = math.sqrt(23.0) / t
+        post_sample_change = -0.5 + 0.005 * t
+        post_publication_change = -0.8 + 0.01 * t
+        for month_index in range(48):
+            year = 1963 + month_index // 12
+            if year <= 1964:
+                level, post_sample, post_publication = 1.0, 0, 0
+            elif year == 1965:
+                level, post_sample, post_publication = 1.0 + post_sample_change, 1, 0
+            else:
+                level, post_sample, post_publication = 1.0 + post_publication_change, 0, 1
+            wiggle = amplitude * (1 if month_index % 2 == 0 else -1)
+            records.append(
+                {
+                    "signalname": signalname,
+                    "yyyymm": year * 100 + month_index % 12 + 1,
+                    "ret": level + wiggle,
+                    "post_sample": post_sample,
+                    "post_publication": post_publication,
+                }
+            )
+    return make_panel(records)
+
+
+def test_continuous_spec_recovers_the_linear_t_relation(tmp_path: Path) -> None:
+    panel = continuous_panel()
+    doc = write_mt_signal_doc(tmp_path, {"P0": 5.0, "P1": 1.0, "P2": 5.0, "P3": 1.0})
+    table = mt_table(panel, doc, write_prereg(tmp_path))
+    rows = {
+        row["term"]: row
+        for row in table.filter(pl.col("spec") == "mt_tstat_continuous").iter_rows(named=True)
+    }
+    assert rows["post_sample"]["coef"] == pytest.approx(-0.5, abs=1e-8)
+    assert rows["post_sample_x_tstat"]["coef"] == pytest.approx(0.005, abs=1e-10)
+    assert rows["post_publication"]["coef"] == pytest.approx(-0.8, abs=1e-8)
+    assert rows["post_publication_x_tstat"]["coef"] == pytest.approx(0.01, abs=1e-10)
+    # positive interaction: smaller t (weaker evidence) means a larger decline
+    assert rows["post_sample_x_tstat"]["coef"] > 0.0
+    assert rows["post_publication_x_tstat"]["coef"] > 0.0
+    assert rows["post_sample"]["n_weak"] == 1
+
+
+def test_fixture_panel_runs_all_three_specs(tmp_path: Path) -> None:
+    panel = pl.read_parquet(FIXTURE_PANEL)
+    names = panel["signalname"].unique().sort().to_list()
+    doc = write_mt_signal_doc(
+        tmp_path, {name: 1.0 if index % 3 == 0 else 5.0 for index, name in enumerate(names)}
+    )
+    table = mt_table(panel, doc, write_prereg(tmp_path))
+
+    validate_frame(table, RESULTS_SCHEMAS["multiple_testing.csv"])
+    assert table["spec"].unique().sort().to_list() == [
+        "mt_tstat_continuous",
+        "mt_weak_original",
+        "mt_weak_replicated",
+    ]
+    assert table.height == 3 * 4
+    assert table["n_predictors"].unique().to_list() == [12]
+    assert table["n_obs"].unique().to_list() == [8574]
+    assert table["n_excluded_missing_t"].unique().to_list() == [0]
+    assert table["coef"].is_finite().all()
+    assert table["se"].is_finite().all()
+
+
+def test_cli_writes_schema_valid_files_byte_identically(tmp_path: Path) -> None:
+    panel_path = tmp_path / "panel.parquet"
+    weak_decay_panel().write_parquet(panel_path)
+    doc = write_mt_signal_doc(tmp_path, {"W0": 1.0, "W1": 2.0, "S0": 5.0, "S1": 9.0})
+    prereg_path = write_prereg(tmp_path)
+
+    dirs = [tmp_path / "results_a", tmp_path / "results_b"]
+    for results_dir in dirs:
+        code = mt_cli(
+            [
+                "--panel",
+                str(panel_path),
+                "--signal-doc",
+                str(doc),
+                "--prereg",
+                str(prereg_path),
+                "--specs",
+                str(SPECS_PATH),
+                "--results-dir",
+                str(results_dir),
+            ]
+        )
+        assert code == 0
+
+    for name in ("multiple_testing.csv", "tstat_summary.csv"):
+        assert (dirs[0] / name).read_bytes() == (dirs[1] / name).read_bytes()
+
+    table = read_results("multiple_testing.csv", dirs[0])
+    validate_frame(table, RESULTS_SCHEMAS["multiple_testing.csv"])
+    assert table.height == 12
+
+    summary = read_results("tstat_summary.csv", dirs[0])
+    validate_frame(summary, RESULTS_SCHEMAS["tstat_summary.csv"])
+    assert summary.height == 2
+    assert summary["n_predictors"].unique().to_list() == [4]
+
+
+def test_cli_records_a_failing_spec_and_keeps_going(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    broken = PREREG_TEXT.replace(
+        "extra_terms: [post_sample_x_weak, post_publication_x_weak]",
+        "extra_terms: [bogus_x_weak, post_publication_x_weak]",
+        1,
+    )
+    panel_path = tmp_path / "panel.parquet"
+    weak_decay_panel().write_parquet(panel_path)
+    doc = write_mt_signal_doc(tmp_path, {"W0": 1.0, "W1": 2.0, "S0": 5.0, "S1": 9.0})
+    results_dir = tmp_path / "results"
+    code = mt_cli(
+        [
+            "--panel",
+            str(panel_path),
+            "--signal-doc",
+            str(doc),
+            "--prereg",
+            str(write_prereg(tmp_path, broken)),
+            "--specs",
+            str(SPECS_PATH),
+            "--results-dir",
+            str(results_dir),
+        ]
+    )
+    assert code == 1
+    assert "failed" in capsys.readouterr().err
+
+    table = read_results("multiple_testing.csv", results_dir)
+    assert table["spec"].unique().sort().to_list() == ["mt_tstat_continuous", "mt_weak_replicated"]
+    assert table.height == 8
+    assert (results_dir / "tstat_summary.csv").is_file()
+
+
+def test_committed_preregistration_loads_with_the_expected_specs() -> None:
+    path = REPO_ROOT / "config" / "phase2_preregistration.yaml"
+    if not path.is_file():
+        pytest.skip("config/phase2_preregistration.yaml not merged yet")
+    prereg = load_phase2_preregistration(path).multiple_testing
+    assert prereg.hurdle_t == 3.0
+    assert [spec.id for spec in prereg.specs] == [
+        "mt_weak_original",
+        "mt_weak_replicated",
+        "mt_tstat_continuous",
+    ]
+    assert [spec.tstat_source for spec in prereg.specs] == [
+        "original_paper",
+        "in_sample_replicated",
+        "in_sample_replicated",
+    ]

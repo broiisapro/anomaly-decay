@@ -1,0 +1,3 @@
+tstat_source,n_predictors,n_missing,n_below_hurdle,median_t,hurdle_t
+in_sample_replicated,212,0,90,3.2173829888910204,3.0
+original_paper,212,24,54,3.995,3.0

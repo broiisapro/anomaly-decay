@@ -54,6 +54,66 @@ class DataConfig:
     french: FrenchConfig
 
 
+@dataclass(frozen=True)
+class BootstrapPrereg:
+    """The pre-registered moving-block bootstrap of the main decay estimates."""
+
+    id: str
+    base_spec: str
+    method: str
+    block_length_months: int
+    reps: int
+    seed: int
+    statistics: tuple[str, ...]
+    interval: str
+    level: float
+    exploratory: bool
+
+
+@dataclass(frozen=True)
+class MultipleTestingSpecPrereg:
+    """One pre-registered multiple-testing specification (a base spec plus a weak flag)."""
+
+    id: str
+    base_spec: str
+    tstat_source: str
+    extra_terms: tuple[str, ...]
+    exploratory: bool
+
+
+@dataclass(frozen=True)
+class MultipleTestingPrereg:
+    """The pre-registered multiple-testing lens on the main decay estimates."""
+
+    hurdle_t: float
+    weak_rule: str
+    missing_tstat: str
+    tstat_sources: Mapping[str, str]
+    specs: tuple[MultipleTestingSpecPrereg, ...]
+
+
+@dataclass(frozen=True)
+class VintagesPrereg:
+    """The pre-registered OSAP vintage comparison."""
+
+    primary: int
+    compare_preference: tuple[int, ...]
+    predictor_set: str
+    specs: tuple[str, ...]
+    metrics: tuple[str, ...]
+    exploratory: bool
+
+
+@dataclass(frozen=True)
+class Phase2Prereg:
+    """The three pre-registered Phase 2 analyses, as loaded from the config file."""
+
+    version: int
+    bootstrap: BootstrapPrereg
+    multiple_testing: MultipleTestingPrereg
+    vintages: VintagesPrereg
+
+
 def _require(section: dict[str, Any], key: str, where: str) -> Any:
     if key not in section:
         raise ConfigError(f"missing key '{key}' in [{where}]")
@@ -325,3 +385,246 @@ def load_specifications(path: Path) -> list[Spec]:
         resolved = _merge_spec_mappings(dict(defaults), _resolve_spec_entry(entries, spec_id, ()))
         specs.append(_to_spec(spec_id, resolved))
     return specs
+
+
+PHASE2_TOP_KEYS: frozenset[str] = frozenset(
+    {"version", "bootstrap", "multiple_testing", "vintages"}
+)
+BOOTSTRAP_KEYS: frozenset[str] = frozenset(
+    {
+        "id",
+        "base_spec",
+        "method",
+        "block_length_months",
+        "reps",
+        "seed",
+        "statistics",
+        "interval",
+        "level",
+        "exploratory",
+    }
+)
+BOOTSTRAP_METHODS: tuple[str, ...] = ("moving_block_by_month",)
+BOOTSTRAP_STATISTICS: tuple[str, ...] = (
+    "coef_post_sample",
+    "coef_post_publication",
+    "decay_pct_post_sample",
+    "decay_pct_post_publication",
+)
+BOOTSTRAP_INTERVALS: tuple[str, ...] = ("percentile",)
+MULTIPLE_TESTING_KEYS: frozenset[str] = frozenset(
+    {"hurdle_t", "weak_rule", "missing_tstat", "tstat_sources", "specs"}
+)
+MULTIPLE_TESTING_SPEC_KEYS: frozenset[str] = frozenset(
+    {"id", "base_spec", "tstat_source", "extra_terms", "exploratory"}
+)
+WEAK_RULES: tuple[str, ...] = ("tstat_below_hurdle",)
+MISSING_TSTAT_RULES: tuple[str, ...] = ("exclude_and_count",)
+VINTAGES_KEYS: frozenset[str] = frozenset(
+    {"primary", "compare_preference", "predictor_set", "specs", "metrics", "exploratory"}
+)
+VINTAGE_PREDICTOR_SETS: tuple[str, ...] = ("intersection",)
+
+
+def _phase2_require(section: Mapping[str, Any], key: str, where: str) -> Any:
+    if key not in section:
+        raise ConfigError(f"{where}: missing key '{key}'")
+    return section[key]
+
+
+def _phase2_mapping(section: Mapping[str, Any], key: str, where: str) -> Mapping[str, Any]:
+    value = _phase2_require(section, key, where)
+    if not isinstance(value, Mapping):
+        raise ConfigError(f"{where}: '{key}' must be a mapping")
+    return value
+
+
+def _phase2_reject_unknown(section: Mapping[str, Any], allowed: frozenset[str], where: str) -> None:
+    unknown = sorted(set(section) - allowed)
+    if unknown:
+        raise ConfigError(f"{where}: unknown keys {unknown}")
+
+
+def _phase2_string(section: Mapping[str, Any], key: str, where: str) -> str:
+    value = _phase2_require(section, key, where)
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"{where}: {key} must be a non-empty string")
+    return value
+
+
+def _phase2_choice(
+    section: Mapping[str, Any], key: str, where: str, choices: tuple[str, ...]
+) -> str:
+    value = _phase2_string(section, key, where)
+    if value not in choices:
+        raise ConfigError(f"{where}: {key} must be one of {list(choices)}, got {value!r}")
+    return value
+
+
+def _phase2_int(
+    section: Mapping[str, Any], key: str, where: str, *, minimum: int | None = None
+) -> int:
+    value = _phase2_require(section, key, where)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{where}: {key} must be an integer")
+    if minimum is not None and value < minimum:
+        raise ConfigError(f"{where}: {key} must be >= {minimum}")
+    return value
+
+
+def _phase2_float(section: Mapping[str, Any], key: str, where: str) -> float:
+    value = _phase2_require(section, key, where)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{where}: {key} must be a number")
+    return float(value)
+
+
+def _phase2_bool(section: Mapping[str, Any], key: str, where: str) -> bool:
+    value = _phase2_require(section, key, where)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{where}: {key} must be a boolean")
+    return value
+
+
+def _phase2_string_list(
+    section: Mapping[str, Any],
+    key: str,
+    where: str,
+    *,
+    choices: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    value = _phase2_require(section, key, where)
+    if not isinstance(value, list) or not value:
+        raise ConfigError(f"{where}: {key} must be a non-empty list of strings")
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigError(f"{where}: {key} must contain only non-empty strings")
+        if choices is not None and item not in choices:
+            raise ConfigError(f"{where}: {key} entry {item!r} must be one of {list(choices)}")
+    return tuple(value)
+
+
+def _to_bootstrap_prereg(section: Mapping[str, Any]) -> BootstrapPrereg:
+    where = "[bootstrap]"
+    _phase2_reject_unknown(section, BOOTSTRAP_KEYS, where)
+    level = _phase2_float(section, "level", where)
+    if not 0.0 < level < 1.0:
+        raise ConfigError(f"{where}: level must be strictly between 0 and 1, got {level}")
+    return BootstrapPrereg(
+        id=_phase2_string(section, "id", where),
+        base_spec=_phase2_string(section, "base_spec", where),
+        method=_phase2_choice(section, "method", where, BOOTSTRAP_METHODS),
+        block_length_months=_phase2_int(section, "block_length_months", where, minimum=1),
+        reps=_phase2_int(section, "reps", where, minimum=1),
+        seed=_phase2_int(section, "seed", where, minimum=0),
+        statistics=_phase2_string_list(section, "statistics", where, choices=BOOTSTRAP_STATISTICS),
+        interval=_phase2_choice(section, "interval", where, BOOTSTRAP_INTERVALS),
+        level=level,
+        exploratory=_phase2_bool(section, "exploratory", where),
+    )
+
+
+def _to_multiple_testing_spec(
+    section: Mapping[str, Any], index: int, tstat_sources: set[str]
+) -> MultipleTestingSpecPrereg:
+    where = f"[multiple_testing] specs[{index}]"
+    _phase2_reject_unknown(section, MULTIPLE_TESTING_SPEC_KEYS, where)
+    tstat_source = _phase2_string(section, "tstat_source", where)
+    if tstat_source not in tstat_sources:
+        raise ConfigError(
+            f"{where}: tstat_source {tstat_source!r} is not in tstat_sources "
+            f"{sorted(tstat_sources)}"
+        )
+    return MultipleTestingSpecPrereg(
+        id=_phase2_string(section, "id", where),
+        base_spec=_phase2_string(section, "base_spec", where),
+        tstat_source=tstat_source,
+        extra_terms=_phase2_string_list(section, "extra_terms", where),
+        exploratory=_phase2_bool(section, "exploratory", where),
+    )
+
+
+def _to_multiple_testing_prereg(section: Mapping[str, Any]) -> MultipleTestingPrereg:
+    where = "[multiple_testing]"
+    _phase2_reject_unknown(section, MULTIPLE_TESTING_KEYS, where)
+    sources = _phase2_mapping(section, "tstat_sources", where)
+    if not sources:
+        raise ConfigError(f"{where}: tstat_sources must be a non-empty mapping")
+    for source, description in sources.items():
+        if (
+            not isinstance(source, str)
+            or not source.strip()
+            or not isinstance(description, str)
+            or not description.strip()
+        ):
+            raise ConfigError(
+                f"{where}: tstat_sources must map non-empty strings to non-empty strings"
+            )
+    raw_specs = _phase2_require(section, "specs", where)
+    if not isinstance(raw_specs, list) or not raw_specs:
+        raise ConfigError(f"{where}: specs must be a non-empty list of mappings")
+    specs: list[MultipleTestingSpecPrereg] = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(raw_specs):
+        if not isinstance(raw, Mapping):
+            raise ConfigError(f"{where}: specs[{index}] must be a mapping")
+        spec = _to_multiple_testing_spec(raw, index, set(sources))
+        if spec.id in seen_ids:
+            raise ConfigError(f"{where}: duplicate spec id {spec.id!r}")
+        seen_ids.add(spec.id)
+        specs.append(spec)
+    return MultipleTestingPrereg(
+        hurdle_t=_phase2_float(section, "hurdle_t", where),
+        weak_rule=_phase2_choice(section, "weak_rule", where, WEAK_RULES),
+        missing_tstat=_phase2_choice(section, "missing_tstat", where, MISSING_TSTAT_RULES),
+        tstat_sources=dict(sources),
+        specs=tuple(specs),
+    )
+
+
+def _to_vintages_prereg(section: Mapping[str, Any]) -> VintagesPrereg:
+    where = "[vintages]"
+    _phase2_reject_unknown(section, VINTAGES_KEYS, where)
+    raw_preference = _phase2_require(section, "compare_preference", where)
+    if not isinstance(raw_preference, list) or not raw_preference:
+        raise ConfigError(f"{where}: compare_preference must be a non-empty list of vintages")
+    for item in raw_preference:
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise ConfigError(f"{where}: compare_preference must contain only integers")
+    return VintagesPrereg(
+        primary=_phase2_int(section, "primary", where, minimum=1),
+        compare_preference=tuple(raw_preference),
+        predictor_set=_phase2_choice(section, "predictor_set", where, VINTAGE_PREDICTOR_SETS),
+        specs=_phase2_string_list(section, "specs", where),
+        metrics=_phase2_string_list(section, "metrics", where),
+        exploratory=_phase2_bool(section, "exploratory", where),
+    )
+
+
+def load_phase2_preregistration(path: Path) -> Phase2Prereg:
+    """Load and validate `config/phase2_preregistration.yaml`.
+
+    Returns the three pre-registered Phase 2 analyses as frozen dataclasses:
+    :class:`BootstrapPrereg`, :class:`MultipleTestingPrereg` and
+    :class:`VintagesPrereg`. Validation is strict — unknown keys, missing keys, wrong
+    types, invalid enum values, duplicate specification ids and a specification that
+    references an undeclared ``tstat_source`` all raise :class:`ConfigError`, so a typo
+    can never silently change a registered analysis.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise ConfigError(f"config file not found: {path}")
+    with path.open("rb") as fh:
+        data = yaml.safe_load(fh)
+    if not isinstance(data, Mapping):
+        raise ConfigError(f"{path}: top level must be a mapping")
+    where = str(path)
+    _phase2_reject_unknown(data, PHASE2_TOP_KEYS, where)
+    return Phase2Prereg(
+        version=_phase2_int(data, "version", where, minimum=1),
+        bootstrap=_to_bootstrap_prereg(_phase2_mapping(data, "bootstrap", where)),
+        multiple_testing=_to_multiple_testing_prereg(
+            _phase2_mapping(data, "multiple_testing", where)
+        ),
+        vintages=_to_vintages_prereg(_phase2_mapping(data, "vintages", where)),
+    )

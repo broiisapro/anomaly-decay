@@ -18,6 +18,18 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures"
 RESULTS_DIR = FIXTURES / "results_fixture"
 SPECS_PATH = REPO_ROOT / "config" / "specifications.yaml"
 
+FIXTURE_FILES = (
+    "coverage.csv",
+    "decay.csv",
+    "event_time.csv",
+    "extension.csv",
+    "main.csv",
+    "predictor_summary.csv",
+    "robustness.csv",
+    "specs_run.csv",
+)
+"""The files the committed fictional fixture covers (the eight Phase 1 results files)."""
+
 COVERAGE_ITEMS = {
     "vintage",
     "first_month",
@@ -46,7 +58,7 @@ def _read(name: str) -> pl.DataFrame:
     return read_results(name, RESULTS_DIR)
 
 
-@pytest.mark.parametrize("name", sorted(RESULTS_SCHEMAS))
+@pytest.mark.parametrize("name", FIXTURE_FILES)
 def test_file_validates_against_results_schema(name: str) -> None:
     path = RESULTS_DIR / name
     assert path.is_file()
@@ -66,7 +78,7 @@ def test_committed_fixture_matches_deterministic_rebuild(tmp_path: Path) -> None
     second = tmp_path / "second"
     assert builder.main(["--out-dir", str(first)]) == 0
     assert builder.main(["--out-dir", str(second)]) == 0
-    for name in RESULTS_SCHEMAS:
+    for name in FIXTURE_FILES:
         assert (first / name).read_bytes() == (second / name).read_bytes()
         assert (RESULTS_DIR / name).read_bytes() == (first / name).read_bytes()
 

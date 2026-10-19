@@ -24,6 +24,17 @@ MAIN_CSV = (
 )
 QMD_PATH = reporting.REPO_ROOT / "report" / "index.qmd"
 FIXTURE_DIR = reporting.REPO_ROOT / "tests" / "fixtures" / "results_fixture"
+FIXTURE_FILES = (
+    "coverage.csv",
+    "decay.csv",
+    "event_time.csv",
+    "extension.csv",
+    "main.csv",
+    "predictor_summary.csv",
+    "robustness.csv",
+    "specs_run.csv",
+)
+"""The files the committed fictional fixture covers (the eight Phase 1 results files)."""
 SECTIONS = (
     "# Question",
     "# Data",
@@ -317,7 +328,7 @@ def test_report_references_every_figure() -> None:
         assert f'"{name}"' in text, f"figure not referenced: {name}"
 
 
-@pytest.mark.parametrize("name", sorted(RESULTS_SCHEMAS))
+@pytest.mark.parametrize("name", FIXTURE_FILES)
 def test_results_fixture_loads_against_its_schema(name: str) -> None:
     frame = reporting.load(name, where=FIXTURE_DIR)
     validate_frame(frame, RESULTS_SCHEMAS[name])

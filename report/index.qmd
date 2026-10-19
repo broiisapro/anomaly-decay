@@ -102,6 +102,12 @@ def main_value(term: str, column: str) -> object:
     return reporting.lookup(main, column, term=term) if main is not None else None
 
 
+def mt_lookup(spec: str, term: str, column: str) -> object:
+    if multiple_testing is None:
+        return None
+    return reporting.lookup(multiple_testing, column, spec=spec, term=term)
+
+
 def decay_value(method: str, term: str, column: str) -> object:
     if decay is None:
         return None
@@ -593,6 +599,43 @@ Table II, column 4). A negative interaction on a window post-sample/post-publica
 the weak group's window shift is more negative than the comparison group's — weaker original
 evidence going with deeper decay; a positive interaction means the opposite. The `n_weak` and
 `n_excluded_missing_t` columns make the composition of each estimation sample visible.
+
+Taking the estimates as computed: in the replicated-t specification the weak group's
+post-publication shift is
+`{python} reporting.direction(mt_lookup("mt_weak_replicated", "post_publication_x_weak", "coef"))`
+than the comparison group's by
+`{python} reporting.num(reporting.magnitude(mt_lookup("mt_weak_replicated", "post_publication_x_weak", "coef")), 3)`
+percent per month (t =
+`{python} reporting.tstat(mt_lookup("mt_weak_replicated", "post_publication_x_weak", "t"))`), and
+the continuous-t post-publication interaction is
+`{python} reporting.num(mt_lookup("mt_tstat_continuous", "post_publication_x_tstat", "coef"), 3)`
+per unit of t (t =
+`{python} reporting.tstat(mt_lookup("mt_tstat_continuous", "post_publication_x_tstat", "t"))`).
+The original-paper-t interactions are
+`{python} reporting.num(mt_lookup("mt_weak_original", "post_sample_x_weak", "coef"), 3)` (t =
+`{python} reporting.tstat(mt_lookup("mt_weak_original", "post_sample_x_weak", "t"))`) and
+`{python} reporting.num(mt_lookup("mt_weak_original", "post_publication_x_weak", "coef"), 3)`
+(t = `{python} reporting.tstat(mt_lookup("mt_weak_original", "post_publication_x_weak", "t"))`).
+
+```{python}
+weak_post_publication = mt_lookup("mt_weak_replicated", "post_publication_x_weak", "coef")
+if weak_post_publication is None:
+    mt_reading_view = Markdown("")
+else:
+    conclusion = (
+        "in the direction of the weaker-evidence hypothesis"
+        if weak_post_publication < 0
+        else "opposite to the weaker-evidence hypothesis"
+    )
+    mt_reading_view = Markdown(
+        "On this vintage, the replicated-t interaction is "
+        f"{conclusion}: the weak group's post-publication shift is "
+        f"{reporting.direction(weak_post_publication)} than the comparison group's, so weaker "
+        "replicated evidence goes with "
+        f"{'deeper' if weak_post_publication < 0 else 'shallower'} post-publication decay."
+    )
+mt_reading_view
+```
 
 # Phase 2: Data-vintage sensitivity
 

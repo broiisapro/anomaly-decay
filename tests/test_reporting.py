@@ -44,10 +44,58 @@ SECTIONS = (
     "# Main result vs the original paper",
     "# Robustness",
     "# Extension",
+    "# Phase 2: Bootstrap inference",
+    "# Phase 2: Multiple-testing lens",
+    "# Phase 2: Data-vintage sensitivity",
     "# Deviations from the original paper",
     "# Limitations",
     "# Reproduction",
 )
+PHASE2_FRAMES = {
+    "bootstrap.csv": {
+        "spec": ["main"],
+        "statistic": ["coef_post_sample"],
+        "estimate": [0.1],
+        "boot_mean": [0.1],
+        "boot_se": [0.02],
+        "ci_low": [0.06],
+        "ci_high": [0.14],
+        "reps": [2000],
+        "block_length": [12],
+        "seed": [2027],
+    },
+    "multiple_testing.csv": {
+        "spec": ["mt_weak_original"],
+        "tstat_source": ["original_paper"],
+        "term": ["post_publication_x_weak"],
+        "coef": [-0.05],
+        "se": [0.04],
+        "t": [-1.25],
+        "n_predictors": [90],
+        "n_obs": [40000],
+        "n_weak": [30],
+        "n_excluded_missing_t": [7],
+    },
+    "tstat_summary.csv": {
+        "tstat_source": ["original_paper"],
+        "n_predictors": [97],
+        "n_missing": [7],
+        "n_below_hurdle": [30],
+        "median_t": [2.5],
+        "hurdle_t": [3.0],
+    },
+    "vintage_comparison.csv": {
+        "spec": ["main"],
+        "vintage": [202410],
+        "term": ["post_sample"],
+        "coef": [-0.14],
+        "se": [0.08],
+        "decay_pct": [-25.0],
+        "n_predictors": [190],
+        "n_obs": [50000],
+        "predictor_set": ["intersection"],
+    },
+}
 CODE_FENCE = re.compile(r"```.*?```", re.DOTALL)
 INLINE_EXPRESSION = re.compile(r"\{python\}[^\n]*")
 INLINE_CODE = re.compile(r"`[^`\n]*`")
@@ -355,6 +403,40 @@ def test_data_config_reads_the_pinned_sources() -> None:
     assert data["osap"]["vintage"] == 202510
     assert data["french"]["downloaded_on"]
     assert data["french"]["ff5_url"].startswith("https://")
+
+
+def test_phase2_preregistration_missing_file_is_none(tmp_path: Path) -> None:
+    assert reporting.phase2_preregistration(tmp_path / "prereg.yaml") is None
+
+
+def test_phase2_preregistration_rejects_non_mapping(tmp_path: Path) -> None:
+    path = tmp_path / "prereg.yaml"
+    path.write_text("- 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="top level must be a mapping"):
+        reporting.phase2_preregistration(path)
+
+
+def test_phase2_preregistration_committed_file() -> None:
+    prereg = reporting.phase2_preregistration()
+    if prereg is None:
+        pytest.skip("config/phase2_preregistration.yaml is not committed yet")
+    assert prereg["bootstrap"]["reps"] == 2000
+    assert prereg["bootstrap"]["seed"] == 2027
+    assert prereg["multiple_testing"]["hurdle_t"] == 3.0
+    assert len(prereg["multiple_testing"]["specs"]) == 3
+    assert prereg["vintages"]["primary"] == 202510
+
+
+@pytest.mark.parametrize("name", sorted(PHASE2_FRAMES))
+def test_phase2_results_load_through_load_optional(name: str, tmp_path: Path) -> None:
+    """The Phase 2 sections read their files through ``load_optional`` and the schemas."""
+    assert reporting.load_optional(name, where=tmp_path) is None
+    frame = pl.DataFrame(PHASE2_FRAMES[name])
+    io_module.write_results(frame, name, tmp_path)
+    loaded = reporting.load_optional(name, where=tmp_path)
+    assert loaded is not None
+    assert loaded.schema == RESULTS_SCHEMAS[name]
+    assert loaded.height == 1
 
 
 def test_table_renders_markdown_pipe_table() -> None:

@@ -37,6 +37,46 @@ robustness = reporting.load_optional("robustness.csv")
 extension = reporting.load_optional("extension.csv")
 specs_run = reporting.load_optional("specs_run.csv")
 coverage = reporting.load_optional("coverage.csv")
+bootstrap = reporting.load_optional("bootstrap.csv")
+multiple_testing = reporting.load_optional("multiple_testing.csv")
+tstat_summary = reporting.load_optional("tstat_summary.csv")
+vintage_comparison = reporting.load_optional("vintage_comparison.csv")
+
+PHASE2 = reporting.phase2_preregistration()
+P2_BOOTSTRAP = (PHASE2 or {}).get("bootstrap", {}) or {}
+P2_MT = (PHASE2 or {}).get("multiple_testing", {}) or {}
+P2_VINTAGES = (PHASE2 or {}).get("vintages", {}) or {}
+
+
+def join_values(values: object) -> str:
+    if not isinstance(values, list) or not values:
+        return reporting.NA_TEXT
+    return ", ".join(str(value) for value in values)
+
+
+def yes_no(value: object) -> str:
+    if value is None:
+        return reporting.NA_TEXT
+    return "yes" if bool(value) else "no"
+
+
+def comparison_vintage_text(frame: pl.DataFrame | None, primary: object) -> str:
+    if frame is None:
+        return reporting.NA_TEXT
+    values = sorted(
+        {str(value) for value in frame["vintage"].to_list() if str(value) != str(primary)}
+    )
+    return ", ".join(values) if values else reporting.NA_TEXT
+
+
+def phase2_status(frame: pl.DataFrame | None) -> str:
+    if frame is None or frame.is_empty():
+        return "pending"
+    return "rendered above"
+
+
+P2_MT_IDS = join_values([entry.get("id") for entry in (P2_MT.get("specs") or [])])
+P2_VINTAGE_PREFERENCE = join_values(P2_VINTAGES.get("compare_preference"))
 
 
 def coverage_value(item: str) -> object:
@@ -472,47 +512,198 @@ else:
 interaction_view
 ```
 
+# Phase 2: Bootstrap inference
+
+The first pre-registered Phase 2 analysis puts sampling uncertainty on the headline estimates
+with a moving-block bootstrap: contiguous blocks of
+`{python} reporting.num(P2_BOOTSTRAP.get("block_length_months"), 0)` calendar months are drawn
+with replacement until the estimation sample's length is reached (block method:
+`{python} P2_BOOTSTRAP.get("method") or reporting.NA_TEXT`), every predictor's observations in a
+month move together, and the main specification is re-estimated in each of
+`{python} reporting.num(P2_BOOTSTRAP.get("reps"), 0)` replicates with seed
+`{python} reporting.num(P2_BOOTSTRAP.get("seed"), 0)`. Intervals are percentile intervals at the
+`{python} reporting.pct(reporting.ratio_pct(P2_BOOTSTRAP.get("level"), 1), 0)` level. The
+pre-registration labels the analysis exploratory = `{python} yes_no(P2_BOOTSTRAP.get("exploratory"))`.
+
+```{python}
+bootstrap_view = render_table(
+    bootstrap,
+    ["spec", "statistic", "estimate", "boot_se", "ci_low", "ci_high"],
+    ["Spec", "Statistic", "Estimate", "Bootstrap SE", "Interval low", "Interval high"],
+    formats={
+        column: (lambda value: reporting.num(value, 3))
+        for column in ("estimate", "boot_se", "ci_low", "ci_high")
+    },
+    missing="`bootstrap.csv` has not been produced yet; the pre-registered bootstrap intervals render here after the Phase 2 run.",
+)
+bootstrap_view
+```
+
+Coefficient statistics (`coef_post_sample`, `coef_post_publication`) are in percent per month;
+the decay statistics (`decay_pct_post_sample`, `decay_pct_post_publication`) are in percent.
+The `spec` column names the resampled specification, and the file's `reps`, `block_length` and
+`seed` columns record the run parameters. The intervals answer how much of the headline decay
+estimate is sampling noise under the pre-registered block scheme, not how the estimate was
+selected.
+
+# Phase 2: Multiple-testing lens
+
+The second pre-registered analysis asks whether predictors with weaker original evidence decay
+more. A predictor counts as *weak* when its t statistic is strictly below the pre-registered
+hurdle of `{python} reporting.num(P2_MT.get("hurdle_t"), 1)` (the hurdle Harvey, Liu and Zhu
+suggest for newly claimed factors); missing t statistics are
+`{python} P2_MT.get("missing_tstat") or reporting.NA_TEXT` — excluded and counted, never
+imputed. Two sources are used: `original_paper`, the t statistic reported in the OSAP signal
+documentation, and `in_sample_replicated`, the t statistic of the `op` long-short return over the
+predictor's own in-sample months, computed from the same data as this replication.
+
+```{python}
+tstat_summary_view = render_table(
+    tstat_summary,
+    ["tstat_source", "n_predictors", "n_missing", "n_below_hurdle", "median_t", "hurdle_t"],
+    ["T-statistic source", "Predictors", "Missing t", "Below hurdle", "Median t", "Hurdle"],
+    formats={
+        "median_t": lambda value: reporting.tstat(value),
+        "hurdle_t": lambda value: reporting.num(value, 1),
+    },
+    missing="`tstat_summary.csv` has not been produced yet; the t-statistic counts render here after the Phase 2 run.",
+)
+tstat_summary_view
+```
+
+```{python}
+multiple_testing_view = render_table(
+    multiple_testing,
+    ["spec", "term", "coef", "se", "t", "n_weak", "n_excluded_missing_t"],
+    ["Specification", "Term", "Coef (%/mo)", "SE", "t", "Weak pred.", "Excluded (missing t)"],
+    formats={
+        "coef": lambda value: reporting.num(value, 3),
+        "se": lambda value: reporting.num(value, 3),
+        "t": reporting.tstat,
+    },
+    missing="`multiple_testing.csv` has not been produced yet; the pre-registered interaction estimates render here after the Phase 2 run.",
+)
+multiple_testing_view
+```
+
+The three pre-registered specifications (`{python} P2_MT_IDS`) re-run the main sample with
+interaction terms between the window indicators and the weak flag, or between the window
+indicators and the continuous replicated t statistic (the analogue of McLean and Pontiff's
+Table II, column 4). A negative interaction on a window post-sample/post-publication term means
+the weak group's window shift is more negative than the comparison group's — weaker original
+evidence going with deeper decay; a positive interaction means the opposite. The `n_weak` and
+`n_excluded_missing_t` columns make the composition of each estimation sample visible.
+
+# Phase 2: Data-vintage sensitivity
+
+The third pre-registered analysis re-estimates the main and full-extension specifications on an
+earlier OSAP release, using the predictor intersection so the comparison is like-for-like, to show
+how much of the result is sensitive to data revisions. The primary vintage is
+`{python} coverage_value("vintage")`; the file re-estimates every reported specification on the
+comparison release `{python} comparison_vintage_text(vintage_comparison, coverage_value("vintage"))`
+and keeps both vintages' rows. The pre-registered preference order for the comparison release is
+`{python} P2_VINTAGE_PREFERENCE`, taking the first release that can be downloaded and passes
+validation.
+
+```{python}
+vintage_view = render_table(
+    vintage_comparison,
+    ["spec", "vintage", "term", "coef", "se", "decay_pct", "n_predictors", "n_obs", "predictor_set"],
+    [
+        "Spec",
+        "Vintage",
+        "Term",
+        "Coef (%/mo)",
+        "SE",
+        "Decay (%)",
+        "N pred.",
+        "N obs",
+        "Predictor set",
+    ],
+    formats={
+        "coef": lambda value: reporting.num(value, 3),
+        "se": lambda value: reporting.num(value, 3),
+        "decay_pct": lambda value: reporting.pct(value, 1),
+    },
+    missing="`vintage_comparison.csv` has not been produced yet; the like-for-like vintage comparison renders here after the Phase 2 run.",
+)
+vintage_view
+```
+
+Rows keep only predictors whose `op` long-short series exists in both releases and whose signal
+documentation is present in both; the `predictor_set` column names the set used. `decay_pct` is
+the pooled-ratio decay computed within each vintage's own sample, so the comparison shows what a
+release update alone moves, with the predictor universe held fixed.
+
 # Deviations from the original paper
 
-- **Data source.** We use the open Chen–Zimmermann OSAP portfolios instead of the
-  authors' hand-collected predictor returns; the predictor universe, portfolio
-  construction and return series therefore differ in detail even where the underlying
-  signal is the same.
-- **Publication timing.** OSAP records a publication year only, not the journal cover
-  month; the default post-publication window starts in January of the following year so
-  that no month is classified as published before the paper existed. The alternative
-  convention (January of the publication year) is a pre-registered robustness row.
-- **Estimation.** The original paper uses a weighted least-squares estimator with
-  contemporaneous cross-correlation corrections; we use pooled panel regressions with
-  predictor fixed effects and month-clustered standard errors (two-way and
-  Driscoll–Kraay clustering as robustness rows). Both answer the same question but do
-  not produce numerically identical standard errors.
-- **Decay definitions.** The headline comparison uses the pooled ratio of the
-  coefficient to the pooled in-sample mean; a regression on in-sample-mean-normalized
-  returns is reported alongside, with predictors that have a non-positive in-sample mean
-  excluded and counted.
-- **Factor adjustment.** Factor-adjusted returns subtract each predictor's FF5 plus
-  momentum exposure (betas estimated on in-sample months only); the original paper's
-  factor analysis follows a different procedure and is not reproduced one-for-one.
-- **Universe filters.** OSAP rows flagged as placebo or drop are excluded from the
-  predictor universe; only `Cat.Signal == "Predictor"` signals are used.
+Every design difference is listed here; the comparison with the paper is interpreted subject to
+all of them.
+
+1. **Publication timing.** OSAP records a publication *year* only, not the journal cover month
+   that McLean and Pontiff use. The default post-publication window therefore starts in January
+   of the year after the publication year, so no month is treated as published before the paper
+   existed; the pre-registered alternative (January of the publication year) is reported in the
+   robustness table.
+2. **Predictors and construction.** McLean and Pontiff hand-collect
+   `{python} reporting.num(PAPER_TABLE.get("n_predictors"), 0)` published anomalies. This
+   replication uses the `{python} coverage_value("n_predictors_op")` predictors in OSAP release
+   `{python} coverage_value("vintage")`, of which
+   `{python} coverage_value("n_published_by_2013")` were published by the main specification's
+   cutoff; each is rebuilt by Chen and Zimmermann following the signal's original paper (`op`
+   series) rather than the authors' own portfolios, so return levels differ in detail even where
+   the signal is the same.
+3. **Standard errors.** The main specification clusters by month inside a predictor-fixed-effects
+   panel regression; the paper's Table II estimates are FGLS with a contemporaneous
+   cross-sectional correlation correction. Two-way clustering and Driscoll–Kraay (Bartlett
+   kernel) are pre-registered robustness rows.
+4. **Sample-period granularity.** OSAP supplies sample start and end *years*, and the window
+   rules apply them at year granularity. Hand-checked examples: Sloan (1996) runs 1962–1991 and
+   matches; Novy-Marx (2013) runs July 1963–December 2010, so the in-sample window here starts
+   six months earlier; Jegadeesh and Titman (1993) run January 1965–December 1989 while OSAP
+   records 1964 as the start year — the end year, and so the post-sample boundary, agree.
+5. **Return sample.** The main specification stops in December 2013 like the paper; the
+   extension runs to the vintage's last month
+   (`{python} reporting.month_label(coverage_value("last_month"))`), and some option-based
+   predictors end earlier because their inputs require listed options.
+6. **Decile portfolios.** The equal- and value-weighted decile variants exist for fewer predictors
+   than `op` (`{python} coverage_value("n_predictors_deciles_ew")` and
+   `{python} coverage_value("n_predictors_deciles_vw")` against
+   `{python} coverage_value("n_predictors_op")`): signals without a discrete sort have no decile
+   portfolios, so those robustness rows use the smaller universe.
+7. **Factor adjustment.** Factor-adjusted returns start in July 1963 (the first FF5 month) and use
+   betas estimated on in-sample months only, with no risk-free subtraction (the long-short series
+   is zero-investment); the paper's factor analysis follows a different procedure.
+8. **Reproducibility.** Result files are byte-identical across runs on the same machine; across
+   operating systems they agree to about 1e-13 relative because the linear-algebra libraries
+   differ, and the tests compare at 1e-10.
+9. **Dates.** OSAP dates are the last trading day of the month (including Saturdays before
+   mid-1952); all joins use year-month keys, never the raw date.
 
 # Limitations
 
-- The development fixture built from a small subset of predictors is a toolchain check,
-  not evidence: its values are fictional and its tables are not interpreted.
-- Full-data results are produced only after the specification freeze (`specs-frozen`);
-  until then, statements about the replication's magnitude are marked *pending
-  full-data run*.
-- OSAP predictor metadata and returns are the project's best public reconstruction of
-  the original universes; results are conditional on that data and the documented
-  window rules.
-- The estimation approximates the original paper's covariance treatment; standard-error
-  levels differ across corrections, which is why the robustness table reports several.
-- Returns are gross of trading costs and are long-short portfolio returns; the paper's
+- **No causal claim.** The specifications estimate shifts in average long-short returns across
+  windows, not the effect of publication. Predictors can weaken for reasons unrelated to the
+  research — changing arbitrage capital, trading costs, risk exposures — and neither the paper's
+  design nor this one separates those channels.
+- **Data revisions.** OSAP is a living dataset: this report is conditional on release
+  `{python} coverage_value("vintage")`, and later releases rebuild portfolios from updated
+  inputs. The pre-registered vintage comparison quantifies how much one earlier release moves the
+  estimates on the predictor intersection.
+- **Reconstruction differences.** OSAP rebuilds each predictor following its original paper, so
+  small differences in portfolio construction, sample windows and return filters persist even for
+  signals the paper also covered; the deviation list gives the hand-checked examples.
+- **Multiple testing.** With `{python} coverage_value("n_predictors_op")` predictors, large
+  t statistics occur by chance even when nothing predicts returns. The multiple-testing section
+  reports hurdle counts and interaction estimates under the pre-registered scheme, but it is one
+  lens on the evidence, not a correction for the full search that produced the literature.
+- **Gross returns.** Returns are long-short portfolio returns before trading costs; the paper's
   question is about predictability, and costs are out of scope here.
-- The publication-year convention can shift the post-publication boundary by up to a
-  year relative to a journal-date convention.
+- **Window conventions.** The publication-year convention can shift the post-publication boundary
+  by up to a year relative to a journal-date convention, and the sample-year convention can move
+  the start of an in-sample window by a few months (see the hand-checked examples).
+- **Fixture.** The committed development fixture is a toolchain check, not evidence; its values
+  are fictional and its tables are not interpreted.
 
 # Reproduction
 
@@ -563,4 +754,65 @@ specs_view = render_table(
     missing="`specs_run.csv` has not been produced yet; the full specification list renders here after the estimation stage runs.",
 )
 specs_view
+```
+
+The Phase 2 analyses are pre-registered in `config/phase2_preregistration.yaml` and frozen with
+the Phase 1 specifications by the `specs-frozen` tag. The table below lists each pre-registered
+analysis with its results file and whether that file is present in this render; exploratory
+items, if any, are labelled.
+
+```{python}
+phase2_entries = []
+if PHASE2 is not None:
+    phase2_entries.append(
+        (
+            "Bootstrap inference",
+            P2_BOOTSTRAP.get("id"),
+            "bootstrap.csv",
+            bootstrap,
+            P2_BOOTSTRAP.get("exploratory"),
+        )
+    )
+    for spec_entry in P2_MT.get("specs") or []:
+        phase2_entries.append(
+            (
+                "Multiple-testing lens",
+                spec_entry.get("id"),
+                "multiple_testing.csv",
+                multiple_testing,
+                spec_entry.get("exploratory"),
+            )
+        )
+    for spec_id in P2_VINTAGES.get("specs") or []:
+        phase2_entries.append(
+            (
+                "Data-vintage sensitivity",
+                spec_id,
+                "vintage_comparison.csv",
+                vintage_comparison,
+                P2_VINTAGES.get("exploratory"),
+            )
+        )
+
+phase2_status_rows = (
+    pl.DataFrame(
+        {
+            "analysis": [entry[0] for entry in phase2_entries],
+            "pre_registered_id": [entry[1] for entry in phase2_entries],
+            "results_file": [entry[2] for entry in phase2_entries],
+            "status": [phase2_status(entry[3]) for entry in phase2_entries],
+            "exploratory": [entry[4] for entry in phase2_entries],
+        }
+    )
+    if phase2_entries
+    else None
+)
+
+phase2_view = render_table(
+    phase2_status_rows,
+    ["analysis", "pre_registered_id", "results_file", "status", "exploratory"],
+    ["Analysis", "Pre-registered id", "Results file", "Status", "Exploratory"],
+    missing="`config/phase2_preregistration.yaml` has not been committed yet; the Phase 2 analyses render here once the pre-registration exists.",
+)
+phase2_view
 ```

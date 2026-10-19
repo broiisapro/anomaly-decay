@@ -41,6 +41,7 @@ __all__ = [
     "num",
     "original_paper",
     "pct",
+    "phase2_preregistration",
     "pp_gap",
     "ratio",
     "ratio_pct",
@@ -54,6 +55,7 @@ RESULTS_ENV_VAR: str = "ANOMALY_DECAY_RESULTS"
 DEFAULT_RESULTS_DIRNAME: str = "results"
 ORIGINAL_PAPER_PATH: Path = REPO_ROOT / "config" / "original_paper.yaml"
 DATA_CONFIG_PATH: Path = REPO_ROOT / "config" / "data.toml"
+PHASE2_PREREG_PATH: Path = REPO_ROOT / "config" / "phase2_preregistration.yaml"
 RASTER_EXTENSIONS: tuple[str, ...] = ("png", "jpg", "jpeg", "gif")
 FIGURE_EXTENSIONS: tuple[str, ...] = (*RASTER_EXTENSIONS, "svg")
 NA_TEXT: str = "n/a"
@@ -370,3 +372,19 @@ def data_config(path: Path | None = None) -> dict[str, Any]:
     source = DATA_CONFIG_PATH if path is None else path
     with source.open("rb") as handle:
         return tomllib.load(handle)
+
+
+def phase2_preregistration(path: Path | None = None) -> dict[str, Any] | None:
+    """Load ``config/phase2_preregistration.yaml``, or ``None`` when it does not exist.
+
+    The Phase 2 sections describe themselves from the pre-registration (reps, seed, block
+    length, hurdle, vintage preference); returning ``None`` keeps the report renderable
+    before the file is committed, with the sections showing their pending notes.
+    """
+    source = PHASE2_PREREG_PATH if path is None else path
+    if not source.is_file():
+        return None
+    data = yaml.safe_load(source.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{source}: top level must be a mapping")
+    return data

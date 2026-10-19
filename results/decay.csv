@@ -1,0 +1,5 @@
+spec,method,term,decay_pct,se_pct,in_sample_mean,n_predictors,n_obs
+main,pooled_ratio,post_publication,-49.5160677012003,10.854656940595895,0.6801617372803137,198,101567
+main,pooled_ratio,post_sample,-35.15622341920111,9.965156125704901,0.6801617372803137,198,101567
+normalized,normalized,post_publication,-48.12457596625693,11.519686221699779,1.0,195,99671
+normalized,normalized,post_sample,-28.090327371618763,11.149335511277677,1.0,195,99671

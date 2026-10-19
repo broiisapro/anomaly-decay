@@ -8,6 +8,7 @@ table builders on the committed results fixture, and the structure of ``report/i
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import polars as pl
@@ -37,6 +38,7 @@ FIXTURE_FILES = (
 """The files the committed fictional fixture covers (the eight Phase 1 results files)."""
 SECTIONS = (
     "# Question",
+    "# Headline result",
     "# Data",
     "# Method",
     "# Main result vs the original paper",
@@ -46,6 +48,11 @@ SECTIONS = (
     "# Limitations",
     "# Reproduction",
 )
+CODE_FENCE = re.compile(r"```.*?```", re.DOTALL)
+INLINE_EXPRESSION = re.compile(r"\{python\}[^\n]*")
+INLINE_CODE = re.compile(r"`[^`\n]*`")
+BACKTICK_EXPRESSION = re.compile(r"`\{python\} [^`]+`")
+DECIMAL_NUMBER = re.compile(r"\b\d+\.\d+\b")
 
 
 def _write_main(results_dir: Path) -> None:
@@ -193,6 +200,95 @@ def test_tstat(value: float | None, expected: str) -> None:
     assert reporting.tstat(value) == expected
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (-0.5, "lower"),
+        (26.0, "higher"),
+        (0, "unchanged"),
+        (None, "n/a"),
+        (float("nan"), "n/a"),
+    ],
+)
+def test_direction(value: float | int | None, expected: str) -> None:
+    assert reporting.direction(value) == expected
+
+
+def test_direction_accepts_custom_words() -> None:
+    assert reporting.direction(-1.0, positive="more", negative="less", zero="same") == "less"
+    assert reporting.direction(1.0, positive="more") == "more"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(-2.5, 2.5), (3, 3), (0.0, 0.0), (None, None), (float("nan"), float("nan"))],
+)
+def test_magnitude(value: float | int | None, expected: float | int | None) -> None:
+    result = reporting.magnitude(value)
+    if expected is None or (isinstance(expected, float) and expected != expected):
+        assert result is None or result != result
+    else:
+        assert result == expected
+
+
+def test_direction_and_magnitude_compose_for_sign_prose() -> None:
+    coef = -0.333
+    assert (
+        f"returns are {reporting.direction(coef)} by {reporting.num(reporting.magnitude(coef), 3)}"
+        == "returns are lower by 0.333"
+    )
+
+
+@pytest.mark.parametrize(
+    ("numerator", "denominator", "expected"),
+    [
+        (-0.150, 0.582, -25.77319587628866),
+        (1.0, 4.0, 25.0),
+        (0.0, 0.582, 0.0),
+        (1.0, 0.0, None),
+        (None, 0.582, None),
+        (0.150, None, None),
+        (float("nan"), 0.582, None),
+        (0.150, float("nan"), None),
+    ],
+)
+def test_ratio_pct(
+    numerator: float | None, denominator: float | None, expected: float | None
+) -> None:
+    result = reporting.ratio_pct(numerator, denominator)
+    if expected is None:
+        assert result is None
+    else:
+        assert result == pytest.approx(expected)
+
+
+def test_ratio_pct_feeds_pct_for_the_headline_decay() -> None:
+    assert reporting.pct(reporting.ratio_pct(-0.150, 0.582)) == "-25.8%"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("201312", "2013-12"),
+        (199501, "1995-01"),
+        (202412, "2024-12"),
+        (None, "n/a"),
+        ("", "n/a"),
+        ("2013", "n/a"),
+        ("20x312", "n/a"),
+    ],
+)
+def test_month_label(value: object, expected: str) -> None:
+    assert reporting.month_label(value) == expected
+
+
+def test_data_config_reads_the_pinned_sources() -> None:
+    data = reporting.data_config()
+    assert data["osap"]["vintage"] == 202510
+    assert data["french"]["downloaded_on"]
+    assert data["french"]["ff5_url"].startswith("https://")
+
+
 def test_table_renders_markdown_pipe_table() -> None:
     frame = pl.DataFrame({"term": ["post_sample"], "coef": [0.15]})
     text = reporting.table(frame, ["term", "coef"], ["Term", "Coef"])
@@ -316,10 +412,26 @@ def test_original_paper_rejects_non_mapping(tmp_path: Path) -> None:
         reporting.original_paper(path)
 
 
-def test_report_contains_the_nine_sections() -> None:
+def test_report_contains_the_required_sections() -> None:
     text = QMD_PATH.read_text(encoding="utf-8")
     for heading in SECTIONS:
         assert f"\n{heading}\n" in text, f"missing section: {heading}"
+
+
+def test_report_prose_has_no_typed_decimal_results() -> None:
+    """Result-like decimals must live in inline expressions, never in typed prose."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    prose = INLINE_CODE.sub("", INLINE_EXPRESSION.sub("", CODE_FENCE.sub("", text)))
+    typed = DECIMAL_NUMBER.findall(prose)
+    assert not typed, f"typed decimal numbers in report prose: {typed}"
+
+
+def test_report_inline_expressions_are_backticked() -> None:
+    """A bare ``{python}`` in the prose renders literally, so every one needs backticks."""
+    text = CODE_FENCE.sub("", QMD_PATH.read_text(encoding="utf-8"))
+    assert "{python}" in text
+    leftover = BACKTICK_EXPRESSION.sub("", text)
+    assert "{python}" not in leftover
 
 
 def test_report_reads_results_only_through_reporting() -> None:

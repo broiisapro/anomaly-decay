@@ -24,7 +24,12 @@ from anomaly_decay import reporting
 
 PAPER = reporting.original_paper()
 PAPER_TABLE = PAPER.get("table2_col1", {})
+PAPER_TABLE1 = PAPER.get("table1", {})
+PAPER_HEADLINE = PAPER.get("headline", {})
 PAPER_STATUS = str(PAPER_TABLE.get("status", "pending-verification")).replace("-", " ")
+PAPER_IN_SAMPLE_MEAN = PAPER_TABLE1.get("in_sample_mean_pct")
+DATA_CONFIG = reporting.data_config()
+FRENCH_DOWNLOADED_ON = DATA_CONFIG.get("french", {}).get("downloaded_on")
 
 main = reporting.load_optional("main.csv")
 decay = reporting.load_optional("decay.csv")
@@ -32,6 +37,25 @@ robustness = reporting.load_optional("robustness.csv")
 extension = reporting.load_optional("extension.csv")
 specs_run = reporting.load_optional("specs_run.csv")
 coverage = reporting.load_optional("coverage.csv")
+
+
+def coverage_value(item: str) -> object:
+    value = reporting.lookup(coverage, "value", item=item) if coverage is not None else None
+    return value if value is not None else reporting.NA_TEXT
+
+
+def paper_table_value(key: str) -> object:
+    value = PAPER_TABLE.get(key)
+    return value if value is not None else reporting.NA_TEXT
+
+
+def paper_term(term: str, field: str) -> object:
+    entry = PAPER_TABLE.get(term, {})
+    return entry.get(field) if isinstance(entry, dict) else None
+
+
+def paper_decline_pct(term: str) -> float | None:
+    return reporting.ratio_pct(paper_term(term, "coef"), PAPER_IN_SAMPLE_MEAN)
 
 
 def main_value(term: str, column: str) -> object:
@@ -44,11 +68,6 @@ def decay_value(method: str, term: str, column: str) -> object:
     return reporting.lookup(decay, column, method=method, term=term)
 
 
-def paper_value(term: str, field: str) -> object:
-    entry = PAPER_TABLE.get(term, {})
-    return entry.get(field) if isinstance(entry, dict) else None
-
-
 def pair_cell(coef: object, se: object) -> str:
     if coef is None and se is None:
         return f"*{PAPER_STATUS}*"
@@ -57,8 +76,12 @@ def pair_cell(coef: object, se: object) -> str:
     return f"{reporting.num(coef, 3)} ({reporting.num(se, 3)})"
 
 
+def callout(title: str, message: str, kind: str = "note") -> str:
+    return f"::: {{.callout-{kind}}}\n## {title}\n\n{message}\n:::\n"
+
+
 def note(message: str) -> str:
-    return f"::: {{.callout-note}}\n## Pending full-data run\n\n{message}\n:::\n"
+    return callout("Pending full-data run", message)
 
 
 def render_table(
@@ -76,30 +99,101 @@ def render_table(
 # Question
 
 Do long-short anomaly returns fall once the original sample ends, and fall further once the
-research is published? McLean and Pontiff (2016) answer yes for their hand-collected sample
-of published anomalies: out-of-sample and post-publication returns are lower than in-sample
-returns. This project rebuilds that result on the open Chen–Zimmermann *Open Source Asset
-Pricing* (OSAP) portfolios, extends it through the latest pinned vintage, and — like the
-original — asks whether the decay is larger once a predictor has been published.
+research is published? McLean and Pontiff (2016) answer yes for a hand-collected sample of
+`{python} paper_table_value("n_predictors")` published anomalies. Their post-sample coefficient
+is `{python} reporting.num(paper_term("post_sample", "coef"), 3)` percent per month and their
+post-publication coefficient is `{python} reporting.num(paper_term("post_publication", "coef"), 3)`,
+against an in-sample mean of `{python} reporting.num(PAPER_IN_SAMPLE_MEAN, 3)` percent per month.
+Estimated post-sample returns are `{python} reporting.direction(paper_decline_pct("post_sample"))`
+than in-sample by `{python} reporting.pct(reporting.magnitude(paper_decline_pct("post_sample")))`,
+and post-publication returns are
+`{python} reporting.direction(paper_decline_pct("post_publication"))` by
+`{python} reporting.pct(reporting.magnitude(paper_decline_pct("post_publication")))` — the
+declines the paper headlines as
+`{python} reporting.pct(PAPER_HEADLINE.get("post_sample_decline_pct"), 0)` and
+`{python} reporting.pct(PAPER_HEADLINE.get("post_publication_decline_pct"), 0)`.
 
-Every number on this page is computed from the files under the results directory when the
-page renders. The paper's published values are read from `config/original_paper.yaml` and
-shown as *pending verification* until a human enters them there; no value from the paper is
-typed into this repository anywhere (decision O25).
+```{python}
+#| echo: false
+if PAPER_TABLE.get("status") == "verified":
+    paper_status_view = Markdown("")
+else:
+    paper_status_view = Markdown(
+        callout(
+            "Original-paper values pending",
+            "The published values this section quotes are entered in `config/original_paper.yaml` "
+            "by the project maintainer after checking them against the article; until then every "
+            f"paper value renders `{reporting.NA_TEXT}` (status: *{PAPER_STATUS}*).",
+        )
+    )
+paper_status_view
+```
+
+This project rebuilds that result from the open Chen–Zimmermann *Open Source Asset Pricing*
+(OSAP) long-short portfolios, extends the return sample through the pinned vintage's last month
+(`{python} reporting.month_label(coverage_value("last_month"))`), and adds the pre-registered
+Phase 2 analyses: a moving-block bootstrap of the main decay estimates, a multiple-testing lens,
+and a comparison against an earlier OSAP vintage. Like the original, the main specification asks
+whether the decay is larger after publication than after the sample ends.
+
+# Headline result
+
+```{python}
+headline_view = render_table(
+    main,
+    ["term", "coef", "se", "t", "n_predictors", "n_obs"],
+    ["Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
+    formats={
+        "coef": lambda value: reporting.num(value, 3),
+        "se": lambda value: reporting.num(value, 3),
+        "t": reporting.tstat,
+    },
+    missing="`main.csv` has not been produced yet; the main estimates render here after the estimation stage runs.",
+)
+headline_view
+```
+
+On the main specification, post-sample returns are
+`{python} reporting.direction(main_value("post_sample", "coef"))` by
+`{python} reporting.num(reporting.magnitude(main_value("post_sample", "coef")), 3)` percent per
+month and post-publication returns are
+`{python} reporting.direction(main_value("post_publication", "coef"))` by
+`{python} reporting.num(reporting.magnitude(main_value("post_publication", "coef")), 3)` percent
+per month, against the pooled in-sample mean of the same estimation sample; measured that way
+the pooled-ratio decay is
+`{python} reporting.pct(decay_value("pooled_ratio", "post_sample", "decay_pct"))` after the
+sample ends and `{python} reporting.pct(decay_value("pooled_ratio", "post_publication", "decay_pct"))`
+after publication.
+
+```{python}
+reporting.figure_block(
+    "event_time",
+    "Average long-short return in event time around the sample end and around publication",
+)
+```
 
 # Data
 
-Portfolio returns are the OSAP long-short series (`port == "LS"`) for every signal in the
-OSAP signal documentation whose `Cat.Signal` is `Predictor` (`1_clear` or `2_likely`).
-The main series is `op`, each predictor's original-paper construction; the equal- and
-value-weighted decile long-short series (`deciles_ew`, `deciles_vw`) serve as robustness
-portfolios and cover only the predictors that have decile portfolios (discrete signals do
-not). Returns are percent per month in both OSAP and the Ken French library, and nothing is
-converted. OSAP dates are the last trading day of the month, so every join is on `yyyymm`.
-Risk factors (FF5 plus momentum) come from the Ken French library and are pinned in-repo so
-a fresh clone reproduces without re-downloading.
+Portfolio returns are the OSAP long-short series (`port == "LS"`) for every signal documented as
+a predictor in the OSAP signal documentation (`Cat.Signal` is `Predictor`, either `1_clear` or
+`2_likely`). The pinned release is `{python} coverage_value("vintage")`, with raw returns from
+`{python} reporting.month_label(coverage_value("first_month"))` through
+`{python} reporting.month_label(coverage_value("last_month"))`; the panel keeps only in-sample and
+later months. The release provides `{python} coverage_value("n_predictors_op")` predictors with
+original-paper (`op`) long-short returns, of which `{python} coverage_value("n_clear")` are
+labelled *clear* and `{python} coverage_value("n_published_by_2013")` were published by the main
+specification's cutoff year — that pair defines the main sample's predictor universe. The equal-
+and value-weighted decile variants cover
+`{python} coverage_value("n_predictors_deciles_ew")` and
+`{python} coverage_value("n_predictors_deciles_vw")` predictors: signals without a discrete sort
+have no decile portfolios, so the decile robustness rows run on a smaller universe.
 
-Vintage, month coverage and predictor counts are recomputed below from `coverage.csv`.
+Returns are percent per month in both OSAP and the Ken French library, and nothing is converted.
+OSAP dates are the last trading day of each month, so every join uses a `yyyymm` key, never the
+raw date. Risk factors (FF5 plus momentum) come from the Ken French library, downloaded
+`{python} FRENCH_DOWNLOADED_ON` and pinned in `data/pinned/`, so a fresh clone reproduces without
+re-downloading. The table below lists every coverage figure the descriptive stage produced for
+this vintage.
 
 ```{python}
 coverage_view = render_table(
@@ -111,16 +205,8 @@ coverage_view = render_table(
 coverage_view
 ```
 
-The event-time panel averages each predictor's long-short return around the two anchors —
-the month after its sample ends and the month after its publication — and the distribution
-panel compares each predictor's in-sample mean return with its post-publication mean return.
-
-```{python}
-reporting.figure_block(
-    "event_time",
-    "Average long-short return in event time around the sample end and around publication",
-)
-```
+The distribution panel compares each predictor's in-sample mean long-short return with its
+post-publication mean return.
 
 ```{python}
 reporting.figure_block(
@@ -131,29 +217,46 @@ reporting.figure_block(
 
 # Method
 
-Each predictor-month on a long-short portfolio is classified into exactly one window:
-`in_sample` (January of the predictor's `SampleStartYear` through December of its
-`SampleEndYear`), `post_sample` (the months after the sample ends and before publication)
-and `post_publication` (default: from January of the publication year plus one; an
-alternative from January of the publication year is a robustness row). Pre-sample months
-are dropped when the panel is built.
+Each predictor-month is classified into exactly one window by year-month arithmetic:
 
-The main specification pools all predictors and estimates
+- `in_sample` — January of the predictor's `SampleStartYear` through December of its
+  `SampleEndYear`, inclusive.
+- `post_sample` — the months after the sample ends and before publication.
+- `post_publication` — the months from publication onward. The default convention starts in
+  January of the year after the publication year, so no month is treated as published before the
+  paper existed; the pre-registered alternative starts in January of the publication year. If
+  publication falls inside or before the sample, `in_sample` wins and `post_sample` is empty for
+  that predictor.
 
-```
+Pre-sample months are dropped when the panel is built, so every row used in estimation lies in
+exactly one of the three windows.
+
+The main specification pools every predictor and estimates
+
+```text
 ret = entity fixed effects + b_post_sample * post_sample + b_post_publication * post_publication + e
 ```
 
-with standard errors clustered by month, on the sample defined by the `main` entry of
-`config/specifications.yaml` — the window that is comparable to the original paper. Decay
-is reported
-two ways: a pooled ratio (coefficient divided by the pooled in-sample mean of the same
-estimation sample) and a regression of returns normalized by each predictor's in-sample
-mean (predictors with a non-positive in-sample mean are excluded and counted in
-`n_predictors`). Factor-adjusted returns subtract each predictor's FF5+momentum exposure
-estimated on in-sample months only. The full specification list is pre-registered in
-`config/specifications.yaml`, frozen by the `specs-frozen` tag before the first full-data
-estimation, and every entry is listed in the appendix.
+with standard errors clustered by month. Two further pre-registered covariance estimates — two-way
+clustering by month and predictor, and Driscoll–Kraay with a Bartlett kernel — and the
+publication-convention, sample-start, universe, portfolio and factor-adjustment variants are
+reported in the robustness table. The original paper instead uses FGLS with a contemporaneous
+cross-sectional correlation correction; that covariance is not reproduced here, so the standard
+errors are comparable in kind but not numerically identical to the paper's.
+
+Decay is reported two ways. The pooled ratio divides each coefficient by the pooled in-sample mean
+of the same estimation sample (the paper's headline definition); the normalized regression
+divides each predictor's returns by its own in-sample mean first, excludes predictors whose mean
+is non-positive, and counts them in `n_predictors`. Factor-adjusted returns subtract each
+predictor's FF5 plus momentum exposure — betas estimated on in-sample months only, starting from
+the first month for which all of the factors exist — from every month's return; the long-short
+series is zero-investment, so the risk-free rate is not subtracted.
+
+Every specification in this report is pre-registered in `config/specifications.yaml` and frozen by
+the annotated tag `specs-frozen` before the first full-data estimation; the Phase 2 analyses are
+pre-registered in `config/phase2_preregistration.yaml` and frozen with it. Anything added after
+the freeze must be labelled exploratory, and the appendix lists every specification with its
+status.
 
 # Main result vs the original paper
 
@@ -204,7 +307,7 @@ else:
                 pair_cell(main_value(term, "coef"), main_value(term, "se")) for term in terms
             ],
             "paper": [
-                pair_cell(paper_value(term, "coef"), paper_value(term, "se")) for term in terms
+                pair_cell(paper_term(term, "coef"), paper_term(term, "se")) for term in terms
             ],
         }
     )
@@ -218,11 +321,6 @@ paper_comparison_view = render_table(
 paper_comparison_view
 ```
 
-The estimated post-sample level shift is `{python} reporting.num(main_value("post_sample", "coef"), 3)`
-percent per month (t = `{python} reporting.tstat(main_value("post_sample", "t"))`) and the
-post-publication shift is `{python} reporting.num(main_value("post_publication", "coef"), 3)`
-percent per month (t = `{python} reporting.tstat(main_value("post_publication", "t"))`).
-
 ```{python}
 decay_view = (
     decay.select("method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors")
@@ -233,7 +331,7 @@ decay_view = (
 decay_table_view = render_table(
     decay_view,
     ["method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors"],
-    ["Method", "Term", "Decay (% lower)", "SE (pp)", "IS mean (%/mo)", "N pred."],
+    ["Method", "Term", "Decay (%)", "SE (pp)", "IS mean (%/mo)", "N pred."],
     formats={
         "decay_pct": lambda value: reporting.pct(value, 1),
         "se_pct": lambda value: reporting.num(value, 1),
@@ -244,14 +342,19 @@ decay_table_view = render_table(
 decay_table_view
 ```
 
-Against the in-sample mean, the pooled-ratio estimate puts post-sample returns
+The replication's post-sample coefficient is
+`{python} reporting.num(main_value("post_sample", "coef"), 3)` percent per month against the
+paper's `{python} reporting.num(paper_term("post_sample", "coef"), 3)`, and the post-publication
+coefficient is `{python} reporting.num(main_value("post_publication", "coef"), 3)` against the
+paper's `{python} reporting.num(paper_term("post_publication", "coef"), 3)`. Against the in-sample
+mean, the pooled-ratio estimate puts post-sample returns
 `{python} reporting.pct(decay_value("pooled_ratio", "post_sample", "decay_pct"))` and
 post-publication returns
 `{python} reporting.pct(decay_value("pooled_ratio", "post_publication", "decay_pct"))`; the
 normalized-regression estimates are
 `{python} reporting.pct(decay_value("normalized", "post_sample", "decay_pct"))` and
-`{python} reporting.pct(decay_value("normalized", "post_publication", "decay_pct"))`. The
-original paper's published decay percentages are `{python} PAPER_STATUS`.
+`{python} reporting.pct(decay_value("normalized", "post_publication", "decay_pct"))`. The paper's
+values come from `config/original_paper.yaml` (status: *`{python} PAPER_STATUS`*).
 
 # Robustness
 
@@ -374,19 +477,39 @@ interaction_view
 
 # Reproduction
 
-From a clean clone: `uv sync --frozen`, then either `make reproduce-fixture` (offline:
-verified fixture inputs, the full pipeline on the committed development fixture, and
-this report
-rendered from those fixture results) or `make reproduce` (downloads the pinned OSAP
-vintage, verifies hashes, runs the pipeline and renders this report from `results/`).
-`make verify-hashes` re-checks every cached file against the manifest.
+From a clean clone, `uv sync --frozen` installs the pinned environment. Then either
 
-The report reads only the results directory. By default that is `results/` at the
-repository root; `ANOMALY_DECAY_RESULTS` overrides it (relative paths resolve against the
-repository root), which is how the offline fixture gate renders this same document from
-fixture results. Every number in the prose and tables is computed at render time from
-those files through `anomaly_decay.reporting`; nothing is typed by hand, and a missing
-results file produces a visible pending note instead of a failed render.
+```bash
+make reproduce-fixture   # offline: fixture inputs, then this report from fixture results
+```
+
+checks the toolchain without network access, or
+
+```bash
+make reproduce           # fetch -> metadata -> panel -> estimate -> descriptive -> figures -> report
+```
+
+downloads the pinned OSAP vintage into the gitignored cache, verifies every cached file
+against the committed SHA-256 manifest (`data/manifest.lock`), and renders this report from
+`results/`. `make verify-hashes` re-checks the cache at any time and prints
+`all hashes match`.
+
+The fixture gate is the project's offline regression test: it runs the same pipeline on a
+committed development subset of the vintage's predictor files, rebuilds the panel and asserts
+it is exactly equal to an independently built reference panel, compares the fixture `main.csv`
+with committed expected values to a tolerance of 1e-10, requires a second run of the result
+stages to leave every file byte-identical, and renders both the HTML and PDF of this document.
+
+On one machine, rerunning `make reproduce` leaves every file under `results/` byte-identical to
+the committed copy: the results CSVs are sorted by key columns with fixed float formatting, and
+the figure files carry no timestamps. Across operating systems the linear-algebra libraries
+differ (macOS Accelerate versus OpenBLAS on Linux), so the same computation agrees to about
+1e-13 relative and the tests compare at 1e-10; the committed results were produced on macOS.
+This document contains no typed result: every prose number and table cell is computed at render
+time through `anomaly_decay.reporting` from the results directory (`results/` by default;
+`ANOMALY_DECAY_RESULTS` overrides it, which is how the fixture gate renders this same document
+from fixture results), and a results file that has not been produced yet renders a visible
+pending note instead of failing the render.
 
 # Appendix: every specification run
 

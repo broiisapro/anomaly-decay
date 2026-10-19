@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import os
+import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -26,14 +27,19 @@ if TYPE_CHECKING:
 
 __all__ = [
     "NA_TEXT",
+    "data_config",
+    "direction",
     "figure",
     "figure_block",
     "load",
     "load_optional",
     "lookup",
+    "magnitude",
+    "month_label",
     "num",
     "original_paper",
     "pct",
+    "ratio_pct",
     "results_dir",
     "table",
     "tstat",
@@ -43,6 +49,7 @@ REPO_ROOT: Path = Path(__file__).resolve().parents[1]
 RESULTS_ENV_VAR: str = "ANOMALY_DECAY_RESULTS"
 DEFAULT_RESULTS_DIRNAME: str = "results"
 ORIGINAL_PAPER_PATH: Path = REPO_ROOT / "config" / "original_paper.yaml"
+DATA_CONFIG_PATH: Path = REPO_ROOT / "config" / "data.toml"
 RASTER_EXTENSIONS: tuple[str, ...] = ("png", "jpg", "jpeg", "gif")
 FIGURE_EXTENSIONS: tuple[str, ...] = (*RASTER_EXTENSIONS, "svg")
 NA_TEXT: str = "n/a"
@@ -146,6 +153,66 @@ def tstat(value: float | None, digits: int = 2) -> str:
     return f"{value:.{digits}f}"
 
 
+def direction(
+    value: float | int | None,
+    *,
+    positive: str = "higher",
+    negative: str = "lower",
+    zero: str = "unchanged",
+) -> str:
+    """Sign word for *value*: *positive* above zero, *negative* below, *zero* at zero.
+
+    Prose whose wording depends on the sign of a computed number (for example "returns
+    are *lower* after publication") gets that word here, so the text never hard-codes
+    something the data could contradict. ``None`` and ``NaN`` render :data:`NA_TEXT`.
+    """
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return NA_TEXT
+    if value > 0:
+        return positive
+    if value < 0:
+        return negative
+    return zero
+
+
+def magnitude(value: float | int | None) -> float | int | None:
+    """Absolute value of *value*, passing ``None`` and ``NaN`` through.
+
+    Paired with :func:`direction` so a sentence can say "lower by *x*" without writing
+    ``abs(...)`` inside an inline expression that might receive a missing value.
+    """
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return value
+    return abs(value)
+
+
+def ratio_pct(numerator: float | int | None, denominator: float | int | None) -> float | None:
+    """``100 * numerator / denominator`` as a percent value.
+
+    ``None`` when either input is missing or ``NaN``, or when *denominator* is zero, so
+    the result can be passed straight to :func:`pct` from an inline expression.
+    """
+    if numerator is None or denominator is None:
+        return None
+    if math.isnan(numerator) or math.isnan(denominator) or denominator == 0:
+        return None
+    return 100.0 * numerator / denominator
+
+
+def month_label(value: object) -> str:
+    """Format a ``yyyymm`` key (integer or string) as ``yyyy-mm``.
+
+    Used for month coverage read back from ``coverage.csv``; anything that is not a
+    six-digit key renders :data:`NA_TEXT` rather than raising inside a render.
+    """
+    if value is None:
+        return NA_TEXT
+    text = str(value)
+    if len(text) != 6 or not text.isdigit():
+        return NA_TEXT
+    return f"{text[:4]}-{text[4:]}"
+
+
 def _format_cell(value: object) -> str:
     if _is_missing(value):
         return NA_TEXT
@@ -236,9 +303,16 @@ def figure_block(name: str, caption: str, *, where: Path | None = None) -> Image
 
 
 def original_paper(path: Path | None = None) -> dict[str, Any]:
-    """Load ``config/original_paper.yaml`` (citation and pending-verification values)."""
+    """Load ``config/original_paper.yaml`` (citation and verified paper values)."""
     source = ORIGINAL_PAPER_PATH if path is None else path
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{source}: top level must be a mapping")
     return data
+
+
+def data_config(path: Path | None = None) -> dict[str, Any]:
+    """Load ``config/data.toml`` (pinned OSAP vintage, Ken French download date)."""
+    source = DATA_CONFIG_PATH if path is None else path
+    with source.open("rb") as handle:
+        return tomllib.load(handle)

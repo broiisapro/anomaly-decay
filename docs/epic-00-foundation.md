@@ -145,3 +145,15 @@ Quarto report that renders from `results/` alone.
   covering the columns the pipeline consumes; it is not the full documentation file.
 - Nothing is tagged yet: `specs-frozen` is created by the orchestrator before the first
   full-data estimation, and `epic-00-complete` after this epic merges.
+
+## Correction (Epic 01)
+
+The fixture described above under "The fixture is synthetic and flagged as such" no longer
+exists. Epic 01 (PR #51, "test(fixture): rebuild the 15-predictor fixture from real OSAP
+202510 data") replaced it with real OSAP 202510 data: the synthetic generator path was
+removed from `tests/fixtures/make_fixture_data.py`, which now builds the fixture as a
+subset of the pinned OSAP canonical cache only, and `tests/fixtures/data/FIXTURE_SOURCE.txt`
+records `source: osap-202510` with the source-file hashes. Edge cases the synthetic fixture
+injected on purpose (a null-return month, a predictor with a non-positive in-sample mean)
+are covered by hand-built frames in the unit tests instead. The rest of this document is
+kept as the historical record of Epic 00.

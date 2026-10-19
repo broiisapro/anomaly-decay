@@ -291,16 +291,22 @@ def test_figure_block_references_svg_only_figure_as_markdown(tmp_path: Path) -> 
     assert f"![Event time]({svg.as_posix()})" in block.data
 
 
-def test_original_paper_values_are_pending() -> None:
+def test_original_paper_values_are_verified() -> None:
     data = reporting.original_paper()
     citation = data["citation"]
     assert citation["authors"] == "McLean, R. David, and Jeffrey Pontiff"
     assert citation["year"] == 2016
     assert citation["doi"] == "10.1111/jofi.12365"
+    assert data["status"] == "verified"
+    assert data["table1"]["in_sample_mean_pct"] == 0.582
     table = data["table2_col1"]
-    assert table["status"] == "pending-verification"
-    for term in ("post_sample", "post_publication"):
-        assert table[term] == {"coef": None, "se": None}
+    assert table["status"] == "verified"
+    assert table["post_sample"] == {"coef": -0.150, "se": 0.077}
+    assert table["post_publication"] == {"coef": -0.337, "se": 0.090}
+    assert data["headline"] == {
+        "post_sample_decline_pct": 26,
+        "post_publication_decline_pct": 58,
+    }
 
 
 def test_original_paper_rejects_non_mapping(tmp_path: Path) -> None:

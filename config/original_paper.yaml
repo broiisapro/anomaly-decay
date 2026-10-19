@@ -1,8 +1,11 @@
 # Original-paper reference values for the report.
 #
-# Numeric fields stay null until the orchestrator verifies them against the published
-# paper (decision O25): no agent types a result from the paper anywhere, in prose or in
-# code. The report renders "pending verification" for any null value.
+# Entered by the project maintainer after reading the published article (decision O25).
+# Source: McLean and Pontiff (2016), Journal of Finance 71(1), Table I ("Mean portfolio return
+# in-sample 0.582") and Table II column (1). Table II standard errors are FGLS estimates that allow
+# contemporaneous cross-correlation of portfolio residuals, not clustered standard errors.
+# The published table marks the post-sample coefficient *** although -0.150 / 0.077 is a
+# t-statistic of about -1.95; the value is reproduced as printed.
 
 citation:
   authors: "McLean, R. David, and Jeffrey Pontiff"
@@ -14,13 +17,23 @@ citation:
   pages: "5-32"
   doi: "10.1111/jofi.12365"
 
-status: pending-verification
+status: verified
+
+table1:
+  in_sample_mean_pct: 0.582
 
 table2_col1:
-  status: pending-verification
+  status: verified
+  se_method: "FGLS, contemporaneous cross-sectional correlation"
+  n_predictors: 97
+  n_obs: 51851
   post_sample:
-    coef: null
-    se: null
+    coef: -0.150
+    se: 0.077
   post_publication:
-    coef: null
-    se: null
+    coef: -0.337
+    se: 0.090
+
+headline:
+  post_sample_decline_pct: 26
+  post_publication_decline_pct: 58

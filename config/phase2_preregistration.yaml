@@ -1,0 +1,48 @@
+# Phase 2 analyses for anomaly-decay, pre-registered before the first full-data estimation.
+# Frozen together with config/specifications.yaml by the annotated tag `specs-frozen`.
+# Anything added after the tag must set `exploratory: true` and is reported as such.
+version: 1
+
+bootstrap:
+  id: bootstrap_main
+  base_spec: main
+  method: moving_block_by_month   # contiguous blocks of calendar months; every predictor in a month moves together
+  block_length_months: 12
+  reps: 2000
+  seed: 2027
+  statistics: [coef_post_sample, coef_post_publication, decay_pct_post_sample, decay_pct_post_publication]
+  interval: percentile
+  level: 0.95
+  exploratory: false
+
+multiple_testing:
+  hurdle_t: 3.0                   # Harvey, Liu and Zhu (2016) suggested hurdle
+  weak_rule: tstat_below_hurdle   # weak = t-statistic strictly below hurdle_t
+  missing_tstat: exclude_and_count
+  tstat_sources:
+    original_paper: "OSAP SignalDoc column T-Stat (the original paper's reported t-statistic)"
+    in_sample_replicated: "mean / (sd / sqrt(n)) of the op long-short return over the predictor's in-sample months"
+  specs:
+    - id: mt_weak_original
+      base_spec: main
+      tstat_source: original_paper
+      extra_terms: [post_sample_x_weak, post_publication_x_weak]
+      exploratory: false
+    - id: mt_weak_replicated
+      base_spec: main
+      tstat_source: in_sample_replicated
+      extra_terms: [post_sample_x_weak, post_publication_x_weak]
+      exploratory: false
+    - id: mt_tstat_continuous
+      base_spec: main
+      tstat_source: in_sample_replicated
+      extra_terms: [post_sample_x_tstat, post_publication_x_tstat]   # analogue of McLean-Pontiff Table II col. 4
+      exploratory: false
+
+vintages:
+  primary: 202510
+  compare_preference: [202410, 202408, 2023]   # first release that can be downloaded and passes validation
+  predictor_set: intersection   # Predictor in both signal docs and op long-short rows in both vintages
+  specs: [main, full_extension]
+  metrics: [coef, se, decay_pct, n_predictors, n_obs]
+  exploratory: false

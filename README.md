@@ -67,12 +67,14 @@ the cache. `make reproduce-fixture` needs no network. The report is written to `
 ## Data and licence
 
 The code is released under the MIT licence (see `LICENSE`). Returns come from the Chen–Zimmermann Open Source
-Asset Pricing project and Ken French's data library. The repository does not redistribute raw data — only the
-derived tables and figures under `results/`.
+Asset Pricing project (© Chen & Zimmermann) and Ken French's data library, whose terms of use apply to the
+factor files. The repository does not redistribute raw data — only the derived tables and figures under
+`results/`.
 
 ## Limitations
 
 The replication follows OSAP's construction of each predictor rather than the original paper's; it uses
 publication years without months; and it inherits OSAP's sample-period metadata. These choices, and their
-effect on the comparison with McLean and Pontiff, are documented in the report's Deviations and Limitations
-sections.
+effect on the comparison with McLean and Pontiff, are documented in the report's
+[Deviations](https://broiisapro.github.io/anomaly-decay/#deviations-from-the-original-paper) and
+[Limitations](https://broiisapro.github.io/anomaly-decay/#limitations) sections.

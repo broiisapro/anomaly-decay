@@ -11,10 +11,10 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: "0.11.26"
           enable-cache: false
@@ -23,10 +23,10 @@ jobs:
       - run: uv run ruff format --check .
 
   types:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: "0.11.26"
           enable-cache: false
@@ -34,15 +34,16 @@ jobs:
       - run: uv run mypy anomaly_decay
 
   tests:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     env:
       # The freeze tag exists; a checkout without it (or a drifted frozen file) must fail.
       ANOMALY_DECAY_REQUIRE_FREEZE: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
+          fetch-tags: true
+      - uses: astral-sh/setup-uv@v10
         with:
           version: "0.11.26"
           enable-cache: false
@@ -50,20 +51,16 @@ jobs:
       - run: uv run pytest -q
 
   reproduce-fixture:
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
         with:
           version: "0.11.26"
           enable-cache: false
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: "1.10.19"
+      - run: quarto --version
       - run: uv sync --frozen
-      - name: Quarto availability
-        run: |
-          if ! command -v quarto >/dev/null 2>&1; then
-            echo "::error::Quarto is not installed on this runner; install it with 'brew install --cask quarto'"
-            exit 1
-          fi
-          quarto --version
-          uv run quarto check jupyter
       - run: make reproduce-fixture

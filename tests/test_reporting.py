@@ -13,6 +13,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+import yaml
 from anomaly_decay import io as io_module
 from anomaly_decay import reporting
 from anomaly_decay.schemas import RESULTS_SCHEMAS, validate_frame
@@ -24,6 +25,8 @@ MAIN_CSV = (
     "main,post_publication,-0.02,0.04,-0.5,100,4000\n"
 )
 QMD_PATH = reporting.REPO_ROOT / "report" / "index.qmd"
+MAKEFILE_PATH = reporting.REPO_ROOT / "Makefile"
+QUARTO_CONFIG_PATH = reporting.REPO_ROOT / "report" / "_quarto.yml"
 FIXTURE_DIR = reporting.REPO_ROOT / "tests" / "fixtures" / "results_fixture"
 FIXTURE_FILES = (
     "coverage.csv",
@@ -680,3 +683,100 @@ def test_coverage_table_on_results_fixture() -> None:
     text = reporting.table(coverage, ["item", "value"], ["Item", "Value"])
     assert "| vintage | 202510 |" in text
     assert "| n_predictors_op | 15 |" in text
+
+
+MAKEFILE_TARGET = re.compile(r"^([A-Za-z0-9_.-]+):(?![:=])")
+MAKEFILE_VARIABLE = re.compile(r"^([A-Za-z0-9_.-]+)\s*(?::=|\?=|=)\s*(.*)$")
+MAKEFILE_REFERENCE = re.compile(r"\$\(([A-Za-z0-9_.-]+)\)")
+
+
+def _makefile_recipes() -> dict[str, list[str]]:
+    """Recipe lines of every Makefile rule, with backslash continuations joined."""
+    recipes: dict[str, list[str]] = {}
+    current: str | None = None
+    continued: list[str] | None = None
+    for raw in MAKEFILE_PATH.read_text(encoding="utf-8").splitlines():
+        line = raw.rstrip()
+        if continued is not None:
+            continued.append(line.strip())
+            if line.endswith("\\"):
+                continue
+            assert current is not None
+            joined = " ".join(continued).replace("\\", " ")
+            recipes[current].append(" ".join(joined.split()))
+            continued = None
+            continue
+        target = MAKEFILE_TARGET.match(line)
+        if target:
+            current = target.group(1)
+            recipes.setdefault(current, [])
+            continue
+        if line.startswith("\t"):
+            if current is not None:
+                command = line.strip()
+                if command.endswith("\\"):
+                    continued = [command]
+                else:
+                    recipes[current].append(command)
+            continue
+        if line and not line.startswith("#"):
+            current = None
+    return recipes
+
+
+def _makefile_variables() -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in MAKEFILE_PATH.read_text(encoding="utf-8").splitlines():
+        match = MAKEFILE_VARIABLE.match(line)
+        if match:
+            values[match.group(1)] = match.group(2).strip()
+    return values
+
+
+def _expand_makefile(text: str, values: dict[str, str]) -> str:
+    for _ in range(10):
+        expanded = MAKEFILE_REFERENCE.sub(
+            lambda match: values.get(match.group(1), match.group(0)), text
+        )
+        if expanded == text:
+            break
+        text = expanded
+    return text
+
+
+def test_fixture_site_directory_resolves_under_data_processed() -> None:
+    """The fixture render directory the Makefile uses is data/processed/fixture/_site."""
+    values = _makefile_variables()
+    assert _expand_makefile("$(FIXTURE_SITE_DIR)", values) == "data/processed/fixture/_site"
+
+
+def test_fixture_targets_render_into_their_own_output_directory() -> None:
+    """Fixture renders pass an absolute --output-dir; none writes report/_site."""
+    recipes = _makefile_recipes()
+    for target in ("report-fixture", "report-placeholder", "reproduce-fixture"):
+        assert target in recipes, f"missing Makefile target: {target}"
+        renders = [cmd for cmd in recipes[target] if "quarto render report" in cmd]
+        assert renders, f"{target} never renders the report"
+        for command in renders:
+            assert "--output-dir" in command, command
+            assert "$(FIXTURE_SITE_DIR)" in command, command
+            assert "report/_site" not in command, command
+
+
+def test_report_target_is_the_only_one_writing_report_site() -> None:
+    """Every report render except `make report` overrides the project output directory."""
+    recipes = _makefile_recipes()
+    for target, commands in recipes.items():
+        for command in commands:
+            if "quarto render report" not in command:
+                continue
+            if target == "report":
+                assert "--output-dir" not in command, command
+            else:
+                assert "--output-dir" in command, f"{target}: {command}"
+                assert "$(FIXTURE_SITE_DIR)" in command, f"{target}: {command}"
+
+
+def test_report_project_still_writes_the_real_site_by_default() -> None:
+    config = yaml.safe_load(QUARTO_CONFIG_PATH.read_text(encoding="utf-8"))
+    assert config["project"]["output-dir"] == "_site"

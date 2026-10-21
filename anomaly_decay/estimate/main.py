@@ -25,13 +25,19 @@ from anomaly_decay.estimate.factors import factor_adjusted_returns
 from anomaly_decay.io import write_results
 from anomaly_decay.schemas import PANEL_KEY, RESULTS_SCHEMAS
 
-__all__ = ["EstimationError", "decay_table", "main", "run_spec"]
+__all__ = ["EstimationError", "build_parser", "decay_table", "main", "run_spec"]
 
 POST_SAMPLE = "post_sample"
 POST_PUBLICATION = "post_publication"
 POOLED_RATIO = "pooled_ratio"
 NORMALIZED = "normalized"
 _PUB_AFTER_2000 = "post_publication_x_pub_after_2000"
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+"""Repository root, so the CLI defaults work from any working directory."""
+DEFAULT_PANEL = REPO_ROOT / "data" / "processed" / "panel.parquet"
+DEFAULT_SPECS = REPO_ROOT / "config" / "specifications.yaml"
+DEFAULT_RESULTS_DIR = REPO_ROOT / "results"
 
 
 class EstimationError(RuntimeError):
@@ -342,13 +348,51 @@ def _print_headline(decay: pl.DataFrame) -> int:
     return 0
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """Argument parser for the estimation CLI.
+
+    The path arguments default to the repository's own ``data/processed/panel.parquet``,
+    ``config/specifications.yaml`` and ``results/`` (resolved against the repository root,
+    not the working directory), so ``python -m anomaly_decay.estimate.main
+    --print-headline`` works as the PRD writes it after ``make reproduce``.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m anomaly_decay.estimate.main",
+        description="Run the specification panel regressions and write decay results.",
+    )
+    parser.add_argument(
+        "--panel",
+        type=Path,
+        default=DEFAULT_PANEL,
+        help=f"panel.parquet path (default: {DEFAULT_PANEL})",
+    )
+    parser.add_argument(
+        "--specs",
+        type=Path,
+        default=DEFAULT_SPECS,
+        help=f"specifications.yaml path (default: {DEFAULT_SPECS})",
+    )
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=DEFAULT_RESULTS_DIR,
+        help=f"results output directory (default: {DEFAULT_RESULTS_DIR})",
+    )
+    parser.add_argument(
+        "--print-headline", action="store_true", help="print headline decay numbers"
+    )
+    parser.add_argument("--only", metavar="ID", default=None, help="run one specification id only")
+    return parser
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI: ``python -m anomaly_decay.estimate.main --panel PATH --specs PATH --results-dir DIR
-    [--print-headline]``.
+    """CLI: ``python -m anomaly_decay.estimate.main [--panel PATH] [--specs PATH]
+    [--results-dir DIR] [--print-headline]``.
 
     Writes ``main.csv``, ``decay.csv``, ``robustness.csv``, ``extension.csv``
     and ``specs_run.csv`` under *results-dir*; ``--print-headline`` prints the
-    post-sample and post-publication decay (%) with SEs and N predictors.
+    post-sample and post-publication decay (%) with SEs and N predictors. All
+    three path arguments default to the repository's own inputs and outputs.
 
     Every specification in *specs* is run (unless ``--only ID`` restricts the run
     to one) and estimated exactly once; a specification that raises
@@ -360,17 +404,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ``group: extension`` coefficients, both labelled — all of whichever
     specifications ran successfully.
     """
-    parser = argparse.ArgumentParser(
-        prog="python -m anomaly_decay.estimate.main",
-        description="Run the specification panel regressions and write decay results.",
-    )
-    parser.add_argument("--panel", type=Path, required=True, help="panel.parquet path")
-    parser.add_argument("--specs", type=Path, required=True, help="specifications.yaml path")
-    parser.add_argument("--results-dir", type=Path, required=True, help="results output directory")
-    parser.add_argument(
-        "--print-headline", action="store_true", help="print headline decay numbers"
-    )
-    parser.add_argument("--only", metavar="ID", default=None, help="run one specification id only")
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     panel = pl.read_parquet(args.panel)

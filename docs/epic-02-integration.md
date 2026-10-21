@@ -130,9 +130,12 @@ and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
   the Phase 2 files add no new I/O path.
 - **Config.** `anomaly_decay.config.load_phase2_preregistration` returns frozen dataclasses for the
   three sections; strict validation raises `ConfigError`.
-- **Reporting helpers.** `load`, `load_optional`, `lookup`, `num`, `pct`, `tstat`, `direction`,
-  `magnitude`, `ratio`, `ratio_pct`, `comparison_word`, `pp_gap`, `factor`, `month_label`, `table`,
-  `figure`, `figure_block`, `original_paper`, `data_config`, `phase2_preregistration`.
+- **Reporting helpers.** `load`, `load_optional`, `lookup`, `num`, `pct`, `count`, `tstat`,
+  `direction`, `magnitude`, `ratio`, `ratio_pct`, `comparison_word`, `decline_word`, `pp_gap`,
+  `factor`, `month_label`, `term_label`, `coverage_item_label`, `coverage_rows`,
+  `coverage_value_text`, `exploratory_label`, `missing_tstat_label`, `block_method_label`,
+  `specifications`, `ordered`, `grouped_table`, `table`, `figure`, `figure_block`,
+  `original_paper`, `data_config`, `phase2_preregistration`.
 - **CLIs.** `python -m anomaly_decay.estimate.bootstrap`, `...multiple_testing`, `...vintages`, and
   `python -m anomaly_decay.data.fetch --osap --vintage N`; the report consumes only their result
   files.
@@ -158,6 +161,49 @@ and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
 - **The PRD's flagless headline command predates the CLI's required arguments.** A fresh-clone
   check uses the explicit-argument equivalent (`--panel --specs --results-dir`); the frozen CLI was
   not changed.
+
+## Corrections (wave 04)
+
+The wave-03 audit found three report problems (R1–R3) and one framing gap; they were fixed in
+#89–#91 and the corrected full-data render was reviewed before the `epic-02-complete` tag.
+
+- **R1 — fixture renders overwrote the real report.** `report/_site/` is now written only by
+  `make report` (and therefore by `make reproduce`). `report-fixture`, `report-placeholder` and
+  `reproduce-fixture` pass an absolute `--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"` and write to
+  `data/processed/fixture/_site/`; `reproduce-fixture` asserts the HTML and PDF exist there.
+  `tests/test_reporting.py` parses the Makefile rules and fails if a fixture target mentions
+  `report/_site` or renders without the output override. Verified by running `make report`, then
+  `make reproduce-fixture`: the PDF and HTML hashes in `report/_site/` were unchanged
+  (`39d58706…` / `d8a7e24a…` in #89).
+- **R2 — table layout and order.** Every table declares `tbl-colwidths`, so Typst wraps cell text
+  inside the text block instead of sizing columns from the longest string. Row order comes from
+  `anomaly_decay.config.load_specifications` (file order) and, for Phase 2, from
+  `config/phase2_preregistration.yaml`: `main` first, then the pre-registered order; terms read
+  post-sample first with prose labels (`term_label`). A long specification label is printed once
+  in bold in the first row of its group (`grouped_table`) instead of on every row. Coverage items
+  use plain labels, months read "January 1926", and coefficients/SEs/t/counts use fixed decimals
+  (`count` adds thousands separators). The page-break shortcode before the extension and
+  multiple-testing sections keeps their tables from splitting a row across pages. All twelve
+  tables were checked in the rendered PDF with `pdftotext -layout`.
+- **R3 — wording.** The Data section states the main universe as the predictors published by 2013
+  (clear or likely) and reports the clear count separately; pre-registration values render as
+  words ("confirmatory (pre-registered)", "excluded and counted", "moving block by month");
+  sentences whose numbers come from an optional results file are emitted only when that file
+  exists (the placeholder and fixture renders contain no `n/a`); the Limitations section
+  distinguishes the real 15-predictor data fixture from the fictional results fixture; and
+  comparisons of negative decay estimates say "a larger/smaller decline" instead of
+  "below/above".
+- **Multiple testing and Table II column 4 (decision O41).** `config/original_paper.yaml` records
+  the paper's column-4 interactions (`table2_col4`: post-publication × in-sample t −0.063 (0.018),
+  post-sample × t −0.061 (0.023), 97 predictors, 51,944 observations). The report prints the
+  paper's post-publication interaction next to the replication's −0.051 (0.016), states that the
+  signs agree, adds the post-sample pair, and then reports both pre-registered weak-split results
+  with their t statistics. No hypothesis verdict is asserted beyond the computed signs.
+
+The reviewed full-data render is 15 pages: the main table reports 198 predictors and 101,567
+observations, all three Phase 2 sections are filled, and no table cell overflows. The only
+remaining layout note is that a table can continue on the next page with its header repeated
+(the rows stay intact); no content is clipped.
 
 ## Known limitations and deferred items
 

@@ -539,7 +539,7 @@ shows each row's post-sample and post-publication coefficient with a 95% confide
 interval.
 
 ```{python}
-#| tbl-colwidths: [30, 20, 10, 8, 7, 10, 15]
+#| tbl-colwidths: [28, 22, 11, 9, 8, 10, 12]
 robustness_view = render_table(
     reporting.ordered(robustness, {"spec": SPEC_ORDER, "term": TERM_ORDER})
     if robustness is not None
@@ -568,6 +568,10 @@ reporting.figure_block(
 )
 ```
 
+```{=typst}
+#pagebreak(weak: true)
+```
+
 # Extension
 
 The extension reruns the main specification on every predictor through the pinned
@@ -576,7 +580,7 @@ vintage's last month and splits the post-publication shift by publication era (t
 across later and earlier literature.
 
 ```{python}
-#| tbl-colwidths: [30, 20, 10, 8, 7, 10, 15]
+#| tbl-colwidths: [28, 22, 11, 9, 8, 10, 12]
 extension_view = render_table(
     reporting.ordered(extension, {"spec": SPEC_ORDER, "term": TERM_ORDER})
     if extension is not None
@@ -673,6 +677,10 @@ The `spec` column names the resampled specification, and the file's `reps`, `blo
 estimate is sampling noise under the pre-registered block scheme, not how the estimate was
 selected.
 
+```{=typst}
+#pagebreak(weak: true)
+```
+
 # Phase 2: Multiple-testing lens
 
 The second pre-registered analysis asks whether predictors with weaker original evidence decay
@@ -711,7 +719,7 @@ tstat_summary_view
 ```
 
 ```{python}
-#| tbl-colwidths: [30, 20, 10, 8, 7, 10, 15]
+#| tbl-colwidths: [28, 22, 11, 9, 8, 10, 12]
 MT_ORDER = [entry.get("id") for entry in (P2_MT.get("specs") or [])]
 MT_LABELS = {
     "mt_weak_original": "Weak split, original-paper t-statistic",
@@ -821,7 +829,7 @@ The pre-registered preference order for the comparison release is
 validation.
 
 ```{python}
-#| tbl-colwidths: [12, 11, 22, 10, 8, 10, 12, 15]
+#| tbl-colwidths: [15, 11, 21, 10, 8, 10, 12, 13]
 VINTAGE_ORDER = [
     P2_VINTAGES.get("primary"),
     *(P2_VINTAGES.get("compare_preference") or []),

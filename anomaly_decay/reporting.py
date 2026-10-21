@@ -32,13 +32,16 @@ __all__ = [
     "TERM_LABELS",
     "TERM_ORDER",
     "COVERAGE_ORDER",
+    "block_method_label",
     "comparison_word",
     "count",
     "coverage_item_label",
     "coverage_rows",
     "coverage_value_text",
     "data_config",
+    "decline_word",
     "direction",
+    "exploratory_label",
     "factor",
     "figure",
     "figure_block",
@@ -47,6 +50,7 @@ __all__ = [
     "load_optional",
     "lookup",
     "magnitude",
+    "missing_tstat_label",
     "month_label",
     "num",
     "ordered",
@@ -133,6 +137,8 @@ MONTH_NAMES: tuple[str, ...] = (
     "November",
     "December",
 )
+MISSING_TSTAT_LABELS: dict[str, str] = {"exclude_and_count": "excluded and counted"}
+BLOCK_METHOD_LABELS: dict[str, str] = {"moving_block_by_month": "moving block by month"}
 
 
 def results_dir() -> Path:
@@ -339,9 +345,9 @@ def factor(value: float | int | None, base: float | int | None, digits: int = 2)
 def month_label(value: object) -> str:
     """Format a ``yyyymm`` key as ``July 1926``.
 
-    Used for month coverage read back from ``coverage.csv``; anything that is not a
-    six-digit key with a month between 1 and 12 renders :data:`NA_TEXT` rather than
-    raising inside a render.
+    Used for month coverage read back from ``coverage.csv`` and for the README block;
+    anything that is not a six-digit key with a month between 1 and 12 renders
+    :data:`NA_TEXT` rather than raising inside a render.
     """
     if value is None:
         return NA_TEXT
@@ -400,6 +406,48 @@ def coverage_rows(frame: pl.DataFrame) -> pl.DataFrame:
             ],
         }
     )
+
+
+def decline_word(
+    left: float | int | None,
+    right: float | int | None,
+) -> str:
+    """How large *left*'s decline is relative to *right*'s: larger, smaller, or the same.
+
+    Both arguments are signed percent changes (negative = a decline), so a more negative
+    value is a *larger* decline — the comparison is reversed relative to
+    :func:`comparison_word`. Used for prose about two negative decay estimates.
+    """
+    if left is None or right is None:
+        return NA_TEXT
+    if math.isnan(left) or math.isnan(right):
+        return NA_TEXT
+    if left < right:
+        return "larger"
+    if left > right:
+        return "smaller"
+    return "the same"
+
+
+def exploratory_label(value: object) -> str:
+    """Words for a pre-registration flag: confirmatory (pre-registered) or exploratory."""
+    if value is None:
+        return NA_TEXT
+    return "exploratory" if bool(value) else "confirmatory (pre-registered)"
+
+
+def missing_tstat_label(value: object) -> str:
+    """Words for the pre-registered missing-t rule (no raw enum names in the report)."""
+    if value is None:
+        return NA_TEXT
+    return MISSING_TSTAT_LABELS.get(str(value), str(value))
+
+
+def block_method_label(value: object) -> str:
+    """Words for the pre-registered bootstrap block method."""
+    if value is None:
+        return NA_TEXT
+    return BLOCK_METHOD_LABELS.get(str(value), str(value))
 
 
 def ordered(frame: pl.DataFrame, order: Mapping[str, Sequence[object]]) -> pl.DataFrame:

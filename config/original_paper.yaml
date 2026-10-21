@@ -37,3 +37,21 @@ table2_col1:
 headline:
   post_sample_decline_pct: 26
   post_publication_decline_pct: 58
+
+table2_col4:
+  status: verified
+  description: "Post-sample and post-publication dummies interacted with the predictor's in-sample t-statistic"
+  n_predictors: 97
+  n_obs: 51944
+  post_sample:
+    coef: 0.067
+    se: 0.112
+  post_publication:
+    coef: -0.120
+    se: 0.114
+  post_sample_x_tstat:
+    coef: -0.061
+    se: 0.023
+  post_publication_x_tstat:
+    coef: -0.063
+    se: 0.018

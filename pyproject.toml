@@ -1,8 +1,10 @@
 [project]
 name = "anomaly_decay"
 version = "0.1.0"
-description = "Reproducible replication of McLean & Pontiff (2016): post-publication decay of anomaly returns"
+description = "Reproducible replication of McLean & Pontiff (2016): post-publication decay of anomaly returns using Open Source Asset Pricing data."
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "Moksh Siruvani" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "openassetpricing",
@@ -15,6 +17,9 @@ dependencies = [
     "pyyaml",
     "requests",
 ]
+
+[project.urls]
+Repository = "https://github.com/broiisapro/anomaly-decay"
 
 [dependency-groups]
 dev = [

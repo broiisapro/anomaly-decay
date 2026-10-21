@@ -12,6 +12,8 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from anomaly_decay.estimate import main as main_module
+from anomaly_decay.estimate.main import build_parser
 from anomaly_decay.estimate.main import main as cli_main
 from anomaly_decay.io import read_results
 from anomaly_decay.schemas import RESULTS_SCHEMAS, validate_frame
@@ -171,3 +173,32 @@ def test_cli_rejects_unknown_only_id(tmp_path: Path) -> None:
             ]
         )
     assert excinfo.value.code == 2
+
+
+def test_cli_path_defaults_point_at_the_repository_files() -> None:
+    args = build_parser().parse_args([])
+    assert (
+        args.panel
+        == main_module.DEFAULT_PANEL
+        == main_module.REPO_ROOT / "data/processed/panel.parquet"
+    )
+    assert (
+        args.specs
+        == main_module.DEFAULT_SPECS
+        == main_module.REPO_ROOT / "config/specifications.yaml"
+    )
+    assert args.results_dir == main_module.DEFAULT_RESULTS_DIR == main_module.REPO_ROOT / "results"
+
+
+def test_cli_runs_with_no_path_arguments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The PRD command works as written: all paths come from the CLI defaults."""
+    panel_path = tmp_path / "panel.parquet"
+    grid_panel(n_signals=4).write_parquet(panel_path)
+    results_dir = tmp_path / "results"
+    monkeypatch.setattr(main_module, "DEFAULT_PANEL", panel_path)
+    monkeypatch.setattr(main_module, "DEFAULT_SPECS", SPECS_PATH)
+    monkeypatch.setattr(main_module, "DEFAULT_RESULTS_DIR", results_dir)
+
+    assert cli_main(["--only", "main"]) == 0
+    assert (results_dir / "main.csv").is_file()
+    assert read_results("main.csv", results_dir)["n_predictors"].unique().to_list() == [4]

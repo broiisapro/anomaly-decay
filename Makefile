@@ -151,6 +151,7 @@ reproduce-fixture:
 	$(FIXTURE_HASH_CMD) > "$(CURDIR)/$(FIXTURE_HASHES_AFTER)"
 	cmp "$(CURDIR)/$(FIXTURE_HASHES_BEFORE)" "$(CURDIR)/$(FIXTURE_HASHES_AFTER)"
 	uv run pytest -q tests/test_reproduce_fixture.py
+	rm -rf "$(FIXTURE_SITE_DIR)"
 	ANOMALY_DECAY_RESULTS=$(FIXTURE_RESULTS) uv run quarto render report \
 		--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"
 	test -f "$(FIXTURE_SITE_DIR)/index.html"

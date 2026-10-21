@@ -338,67 +338,82 @@ def test_ratio(numerator: float | None, denominator: float | None, expected: flo
         assert result == pytest.approx(expected)
 
 
-@pytest.mark.parametrize(
-    ("left", "right", "expected"),
-    [
-        (2.0, 1.0, "above"),
-        (1.0, 2.0, "below"),
-        (-1.0, -1.0, "equal to"),
-        (None, 1.0, "n/a"),
-        (1.0, None, "n/a"),
-        (float("nan"), 1.0, "n/a"),
-        (1.0, float("nan"), "n/a"),
-    ],
-)
-def test_comparison_word(left: float | None, right: float | None, expected: str) -> None:
-    assert reporting.comparison_word(left, right) == expected
+def test_ordered_follows_the_requested_order_and_keeps_unknown_rows() -> None:
+    frame = pl.DataFrame(
+        {
+            "spec": ["z", "main", "unknown", "main"],
+            "term": ["post_publication", "post_publication", "post_sample", "post_sample"],
+            "value": [1, 2, 3, 4],
+        }
+    )
+    ordered = reporting.ordered(
+        frame, {"spec": ["main", "z"], "term": ["post_sample", "post_publication"]}
+    )
+    assert ordered["value"].to_list() == [4, 2, 1, 3]
+    assert ordered.columns == frame.columns
 
 
-@pytest.mark.parametrize(
-    ("left", "right", "digits", "expected"),
-    [
-        (10.0, 7.5, 1, "2.5 pp"),
-        (7.5, 10.0, 1, "2.5 pp"),
-        (1.0, 1.0, 1, "0.0 pp"),
-        (-30.0, -25.77, 1, "4.2 pp"),
-        (None, 1.0, 1, "n/a"),
-        (1.0, float("nan"), 1, "n/a"),
-    ],
-)
-def test_pp_gap(left: float | None, right: float | None, digits: int, expected: str) -> None:
-    assert reporting.pp_gap(left, right, digits) == expected
+def test_ordered_rejects_unknown_column() -> None:
+    with pytest.raises(ValueError, match="order column not in frame"):
+        reporting.ordered(pl.DataFrame({"spec": ["main"]}), {"label": ["main"]})
 
 
-@pytest.mark.parametrize(
-    ("value", "base", "expected"),
-    [
-        (-0.666, -0.337, "1.98×"),
-        (0.5, 2.0, "0.25×"),
-        (-0.5, 2.0, "0.25×"),
-        (1.0, 0.0, "n/a"),
-        (None, 2.0, "n/a"),
-        (2.0, None, "n/a"),
-        (float("nan"), 2.0, "n/a"),
-    ],
-)
-def test_factor(value: float | None, base: float | None, expected: str) -> None:
-    assert reporting.factor(value, base) == expected
+def test_specifications_preserve_the_preregistered_order() -> None:
+    specs = reporting.specifications()
+    assert [spec.id for spec in specs] == [
+        "main",
+        "main_twoway",
+        "main_dk",
+        "pubconv_alt",
+        "start_1963",
+        "clear_only",
+        "ew_deciles",
+        "vw_deciles",
+        "factor_adj",
+        "normalized",
+        "full_extension",
+        "ext_pub_after_2000",
+    ]
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("201312", "2013-12"),
-        (199501, "1995-01"),
-        (202412, "2024-12"),
-        (None, "n/a"),
-        ("", "n/a"),
-        ("2013", "n/a"),
-        ("20x312", "n/a"),
-    ],
-)
-def test_month_label(value: object, expected: str) -> None:
-    assert reporting.month_label(value) == expected
+def test_grouped_table_prints_each_group_label_once() -> None:
+    frame = pl.DataFrame(
+        {
+            "spec": ["main", "main", "main_twoway", "main_twoway"],
+            "term": ["post_sample", "post_publication", "post_sample", "post_publication"],
+            "coef": [-0.239, -0.337, -0.24, -0.34],
+        }
+    )
+    text = reporting.grouped_table(
+        frame,
+        "spec",
+        ["spec", "term", "coef"],
+        ["Specification", "Term", "Coef"],
+        formats={"term": reporting.term_label, "coef": lambda value: reporting.num(value, 3)},
+        labels={"main": "Main", "main_twoway": "Two-way"},
+    )
+    rows = text.splitlines()
+    assert rows[0] == "| Specification | Term | Coef |"
+    assert rows[1] == "| --- | --- | --- |"
+    assert rows[2] == "| **Main** | Post-sample | -0.239 |"
+    assert rows[3] == "|  | Post-publication | -0.337 |"
+    assert rows[4] == "| **Two-way** | Post-sample | -0.240 |"
+    assert rows[5] == "|  | Post-publication | -0.340 |"
+    assert len(rows) == frame.height + 2
+
+
+def test_grouped_table_rejects_a_non_first_group_column() -> None:
+    frame = pl.DataFrame({"spec": ["main"], "term": ["post_sample"]})
+    with pytest.raises(ValueError, match="must be the first column"):
+        reporting.grouped_table(frame, "spec", ["term", "spec"])
+
+
+def test_grouped_table_validates_columns_and_headers() -> None:
+    frame = pl.DataFrame({"spec": ["main"], "term": ["post_sample"]})
+    with pytest.raises(ValueError, match="columns not in frame"):
+        reporting.grouped_table(frame, "spec", ["spec", "coef"])
+    with pytest.raises(ValueError, match="equal length"):
+        reporting.grouped_table(frame, "spec", ["spec", "term"], ["Spec"])
 
 
 def test_data_config_reads_the_pinned_sources() -> None:
@@ -683,6 +698,30 @@ def test_coverage_table_on_results_fixture() -> None:
     text = reporting.table(coverage, ["item", "value"], ["Item", "Value"])
     assert "| vintage | 202510 |" in text
     assert "| n_predictors_op | 15 |" in text
+
+
+def test_coverage_rows_on_results_fixture_are_readable_and_ordered() -> None:
+    coverage = reporting.load("coverage.csv", where=FIXTURE_DIR)
+    rows = reporting.coverage_rows(coverage)
+    items = rows["item"].to_list()
+    values = rows["value"].to_list()
+    assert items[0] == "OSAP release"
+    assert items[1] == "First return month"
+    assert items[2] == "Last return month"
+    assert values[1] == "January 1926"
+    assert values[2] == "December 2024"
+    assert "Predictors with original-paper returns" in items
+    assert "Clear predictors" in items
+    assert all("_" not in item for item in items)
+
+
+def test_report_tables_set_column_widths_that_fit_the_text_block() -> None:
+    """Every rendered table carries column widths; each set sums to the text block width."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    widths = re.findall(r"#\| tbl-colwidths: \[([0-9, ]+)\]", text)
+    assert len(widths) == text.count("= render_table(\n")
+    for specification in widths:
+        assert sum(int(value) for value in specification.split(",")) == 100
 
 
 MAKEFILE_TARGET = re.compile(r"^([A-Za-z0-9_.-]+):(?![:=])")

@@ -121,7 +121,7 @@ def test_check_requires_one_pair_of_markers() -> None:
     assert "exactly one" in problems[0]
 
 
-def test_render_block_reflects_a_changed_decay(tmp_path: Path, results_copy: Path) -> None:
+def test_render_block_reflects_a_changed_decay(results_copy: Path) -> None:
     decay = read_results("decay.csv", results_copy).with_columns(
         pl.when(
             (pl.col("spec") == "main")
@@ -134,7 +134,7 @@ def test_render_block_reflects_a_changed_decay(tmp_path: Path, results_copy: Pat
     )
     mutate(results_copy, "decay.csv", decay)
 
-    block = readme.render_block(results_copy)
+    block = " ".join(readme.render_block(results_copy).split())
     assert "77.7%" in block
     assert "49.5%" not in block
 
@@ -148,7 +148,7 @@ def test_render_block_reflects_a_changed_bootstrap_interval(results_copy: Path) 
     )
     mutate(results_copy, "bootstrap.csv", bootstrap)
 
-    block = readme.render_block(results_copy)
+    block = " ".join(readme.render_block(results_copy).split())
     assert "[-90.0%" in block
 
 
@@ -161,7 +161,7 @@ def test_render_block_reflects_changed_coverage(results_copy: Path) -> None:
     )
     mutate(results_copy, "coverage.csv", coverage)
 
-    block = readme.render_block(results_copy)
+    block = " ".join(readme.render_block(results_copy).split())
     assert "999 predictors in total" in block
 
 

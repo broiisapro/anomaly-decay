@@ -338,6 +338,131 @@ def test_ratio(numerator: float | None, denominator: float | None, expected: flo
         assert result == pytest.approx(expected)
 
 
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        (2.0, 1.0, "above"),
+        (1.0, 2.0, "below"),
+        (-1.0, -1.0, "equal to"),
+        (None, 1.0, "n/a"),
+        (1.0, None, "n/a"),
+        (float("nan"), 1.0, "n/a"),
+        (1.0, float("nan"), "n/a"),
+    ],
+)
+def test_comparison_word(left: float | None, right: float | None, expected: str) -> None:
+    assert reporting.comparison_word(left, right) == expected
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "digits", "expected"),
+    [
+        (10.0, 7.5, 1, "2.5 pp"),
+        (7.5, 10.0, 1, "2.5 pp"),
+        (1.0, 1.0, 1, "0.0 pp"),
+        (-30.0, -25.77, 1, "4.2 pp"),
+        (None, 1.0, 1, "n/a"),
+        (1.0, float("nan"), 1, "n/a"),
+    ],
+)
+def test_pp_gap(left: float | None, right: float | None, digits: int, expected: str) -> None:
+    assert reporting.pp_gap(left, right, digits) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "base", "expected"),
+    [
+        (-0.666, -0.337, "1.98×"),
+        (0.5, 2.0, "0.25×"),
+        (-0.5, 2.0, "0.25×"),
+        (1.0, 0.0, "n/a"),
+        (None, 2.0, "n/a"),
+        (2.0, None, "n/a"),
+        (float("nan"), 2.0, "n/a"),
+    ],
+)
+def test_factor(value: float | None, base: float | None, expected: str) -> None:
+    assert reporting.factor(value, base) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("201312", "December 2013"),
+        (199501, "January 1995"),
+        (202412, "December 2024"),
+        ("192601", "January 1926"),
+        (None, "n/a"),
+        ("", "n/a"),
+        ("2013", "n/a"),
+        ("20x312", "n/a"),
+        ("201313", "n/a"),
+    ],
+)
+def test_month_label(value: object, expected: str) -> None:
+    assert reporting.month_label(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("item", "value", "expected"),
+    [
+        ("vintage", 202510, "202510"),
+        ("vintage", "202510", "202510"),
+        ("first_month", 192601, "January 1926"),
+        ("last_month", "202412", "December 2024"),
+        ("n_predictors_op", 212, "212"),
+        ("n_predictor_months_op", "136338", "136,338"),
+        ("last_month", None, "n/a"),
+    ],
+)
+def test_coverage_value_text(item: object, value: object, expected: str) -> None:
+    assert reporting.coverage_value_text(item, value) == expected
+
+
+def test_coverage_item_label_is_plain_language() -> None:
+    assert reporting.coverage_item_label("n_predictors_op") == (
+        "Predictors with original-paper returns"
+    )
+    assert reporting.coverage_item_label("n_published_by_2013") == "Predictors published by 2013"
+    assert reporting.coverage_item_label("unknown_item") == "unknown item"
+    assert reporting.coverage_item_label(None) == "n/a"
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        (-35.2, -25.8, "larger"),
+        (-25.8, -35.2, "smaller"),
+        (-30.0, -30.0, "the same"),
+        (None, -1.0, "n/a"),
+        (-1.0, None, "n/a"),
+        (float("nan"), -1.0, "n/a"),
+    ],
+)
+def test_decline_word(left: float | None, right: float | None, expected: str) -> None:
+    """A more negative percent change is a larger decline, not a smaller number."""
+    assert reporting.decline_word(left, right) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (False, "confirmatory (pre-registered)"),
+        (True, "exploratory"),
+        (None, "n/a"),
+    ],
+)
+def test_exploratory_label(value: object, expected: str) -> None:
+    assert reporting.exploratory_label(value) == expected
+
+
+def test_preregistration_enum_labels_are_words() -> None:
+    assert reporting.missing_tstat_label("exclude_and_count") == "excluded and counted"
+    assert reporting.block_method_label("moving_block_by_month") == "moving block by month"
+    assert reporting.missing_tstat_label(None) == "n/a"
+    assert reporting.block_method_label("other") == "other"
+
+
 def test_ordered_follows_the_requested_order_and_keeps_unknown_rows() -> None:
     frame = pl.DataFrame(
         {
@@ -571,6 +696,12 @@ def test_original_paper_values_are_verified() -> None:
         "post_sample_decline_pct": 26,
         "post_publication_decline_pct": 58,
     }
+    table4 = data["table2_col4"]
+    assert table4["status"] == "verified"
+    assert table4["n_predictors"] == 97
+    assert table4["n_obs"] == 51944
+    assert table4["post_sample_x_tstat"] == {"coef": -0.061, "se": 0.023}
+    assert table4["post_publication_x_tstat"] == {"coef": -0.063, "se": 0.018}
 
 
 def test_original_paper_rejects_non_mapping(tmp_path: Path) -> None:
@@ -584,6 +715,15 @@ def test_report_contains_the_required_sections() -> None:
     text = QMD_PATH.read_text(encoding="utf-8")
     for heading in SECTIONS:
         assert f"\n{heading}\n" in text, f"missing section: {heading}"
+
+
+def test_report_connects_the_continuous_interaction_to_table2_col4() -> None:
+    """The multiple-testing reading compares the replicated interaction with the column 4 result."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    assert "PAPER_TABLE4" in text
+    assert "Table II, column 4" in text
+    assert "reporting.decline_word" in text
+    assert "sitting" not in text
 
 
 def test_report_prose_has_no_typed_decimal_results() -> None:

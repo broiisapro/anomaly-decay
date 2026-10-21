@@ -27,8 +27,8 @@ A 2,000-replication moving-block bootstrap (block length 12, seed 2027) gives 95
 intervals of [-54.1%, -11.6%] for the post-sample change and [-68.5%, -25.7%] for the
 post-publication change.
 
-The pinned OSAP vintage is 202510, covering 1926-01 through 2024-12: 212 predictors in total, 198
-published by 2013 and 165 classified as clear.
+The pinned OSAP vintage is 202510, covering January 1926 through December 2024: 212 predictors in
+total, 198 published by 2013 and 165 classified as clear.
 <!-- results:end -->
 
 ## What this demonstrates

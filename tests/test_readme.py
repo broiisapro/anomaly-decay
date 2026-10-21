@@ -139,9 +139,7 @@ def test_render_block_reflects_a_changed_decay(tmp_path: Path, results_copy: Pat
     assert "49.5%" not in block
 
 
-def test_render_block_reflects_a_changed_bootstrap_interval(
-    tmp_path: Path, results_copy: Path
-) -> None:
+def test_render_block_reflects_a_changed_bootstrap_interval(results_copy: Path) -> None:
     bootstrap = read_results("bootstrap.csv", results_copy).with_columns(
         pl.when(pl.col("statistic") == "decay_pct_post_publication")
         .then(pl.lit(-90.0))
@@ -154,7 +152,7 @@ def test_render_block_reflects_a_changed_bootstrap_interval(
     assert "[-90.0%" in block
 
 
-def test_render_block_reflects_changed_coverage(tmp_path: Path, results_copy: Path) -> None:
+def test_render_block_reflects_changed_coverage(results_copy: Path) -> None:
     coverage = read_results("coverage.csv", results_copy).with_columns(
         pl.when(pl.col("item") == "n_predictors_op")
         .then(pl.lit("999"))

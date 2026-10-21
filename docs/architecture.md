@@ -204,3 +204,27 @@ with `tests/fixtures/panel_fixture.parquet`, `main.csv` compared with `tests/fix
 GitHub Actions; jobs `lint`, `types`, `tests`, `reproduce-fixture` (job IDs are the required-check names).
 Self-hosted macOS ARM64 runners while private (`runs-on: [self-hosted, macOS, ARM64]`, per-branch concurrency
 with cancel-in-progress); GitHub-hosted runners after public release.
+
+## 8. Pre-registration and the freeze
+`config/specifications.yaml` (12 Phase 1 specifications) and `config/phase2_preregistration.yaml` (bootstrap,
+multiple-testing and vintage analyses) were written before any full-data estimation and frozen together by the annotated
+tag `specs-frozen`. The tag was created automatically only when both files on `main` matched approved SHA-256 hashes and
+no commit had ever touched `results/`; every commit under `results/` descends from it. `tests/test_specs.py` compares
+both files with their tagged versions, and CI runs it with `ANOMALY_DECAY_REQUIRE_FREEZE=1`.
+
+## 9. Phase 2 modules
+- `anomaly_decay.estimate.bootstrap`: moving-block bootstrap by calendar month (12-month blocks, 2,000 replicates,
+  seed 2027, percentile 95% intervals) of the main coefficients and pooled-ratio decay; within-predictor demeaned OLS per
+  replicate, validated against `run_spec`. Writes `results/bootstrap.csv`.
+- `anomaly_decay.estimate.multiple_testing`: original-paper t (SignalDoc `T-Stat`) and replicated in-sample t, weak
+  flags against the t = 3 hurdle, three interaction specifications on the main sample. Writes
+  `results/multiple_testing.csv` and `results/tstat_summary.csv`.
+- `anomaly_decay.estimate.vintages`: rebuilds metadata and the `op` panel for each requested OSAP release, restricts to
+  the predictor intersection and re-runs `main` and `full_extension`. Writes `results/vintage_comparison.csv`.
+- `config.load_phase2_preregistration` validates the pre-registration strictly; `make phase2` runs all three.
+
+## 10. Report outputs and hosting
+The report reads only `results/` through `anomaly_decay.reporting`. `make report` renders `report/_site/` from the
+committed results; fixture renders go to `data/processed/fixture/_site/` so they can never be mistaken for the real
+report. GitHub Pages is deployed by a workflow on release publication from the committed results. While the repository
+was private, CI ran on one self-hosted macOS runner; after the public release it runs on GitHub-hosted `ubuntu-latest`.

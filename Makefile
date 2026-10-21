@@ -34,6 +34,9 @@ FIXTURE_PANEL := $(FIXTURE_PROCESSED_DIR)/panel.parquet
 FIXTURE_RESULTS := $(FIXTURE_PROCESSED_DIR)/results
 FIXTURE_HASHES_BEFORE := $(FIXTURE_PROCESSED_DIR)/results-hashes.before.txt
 FIXTURE_HASHES_AFTER := $(FIXTURE_PROCESSED_DIR)/results-hashes.after.txt
+# Quarto output for every fixture/development render. `report/_site/` belongs to
+# `make report` alone, so the real report can never be overwritten by a fixture run.
+FIXTURE_SITE_DIR := $(FIXTURE_PROCESSED_DIR)/_site
 FIXTURE_HASH_CMD = cd "$(CURDIR)/$(FIXTURE_RESULTS)" && find . -type f | LC_ALL=C sort | xargs shasum -a 256
 
 # Phase 2 CLIs (pre-registered analyses); the `phase2` target names any that do not exist yet.
@@ -79,24 +82,30 @@ figures:
 	uv run python -m anomaly_decay.figures.coefplot --results-dir $(RESULTS_DIR)
 
 # Report from the real results directory (Quarto 1.10.x, bundled Typst PDF).
+# This is the only target that writes report/_site/.
 report:
 	uv run quarto render report
 
 # Development render from the committed dummy results; every missing results file renders
-# a pending note, so this exercises the report's not-yet-produced paths.
+# a pending note, so this exercises the report's not-yet-produced paths. The output goes to
+# the fixture site directory, never report/_site/.
 report-placeholder:
-	ANOMALY_DECAY_RESULTS=tests/fixtures/dummy_results uv run quarto render report
+	rm -rf "$(FIXTURE_SITE_DIR)"
+	ANOMALY_DECAY_RESULTS=tests/fixtures/dummy_results uv run quarto render report \
+		--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"
 
 # Render from the committed results fixture. The figure CLIs run on a throwaway copy so
-# the committed fixture directory stays byte-identical.
+# the committed fixture directory stays byte-identical. The output goes to the fixture
+# site directory, never report/_site/.
 report-fixture:
-	rm -rf "$(FIXTURE_REPORT_DIR)"
+	rm -rf "$(FIXTURE_REPORT_DIR)" "$(FIXTURE_SITE_DIR)"
 	mkdir -p "$(FIXTURE_REPORT_DIR)"
 	cp -R "$(FIXTURE_RESULTS_DIR)/." "$(FIXTURE_REPORT_DIR)/"
 	uv run python -m anomaly_decay.figures.event_time --results-dir $(FIXTURE_REPORT_DIR)
 	uv run python -m anomaly_decay.figures.distribution --results-dir $(FIXTURE_REPORT_DIR)
 	uv run python -m anomaly_decay.figures.coefplot --results-dir $(FIXTURE_REPORT_DIR)
-	ANOMALY_DECAY_RESULTS=$(FIXTURE_REPORT_DIR) uv run quarto render report
+	ANOMALY_DECAY_RESULTS=$(FIXTURE_REPORT_DIR) uv run quarto render report \
+		--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"
 
 # Offline fixture pipeline: the production CLIs on committed fixture inputs, writing
 # under data/processed/fixture/ only.
@@ -142,9 +151,10 @@ reproduce-fixture:
 	$(FIXTURE_HASH_CMD) > "$(CURDIR)/$(FIXTURE_HASHES_AFTER)"
 	cmp "$(CURDIR)/$(FIXTURE_HASHES_BEFORE)" "$(CURDIR)/$(FIXTURE_HASHES_AFTER)"
 	uv run pytest -q tests/test_reproduce_fixture.py
-	ANOMALY_DECAY_RESULTS=$(FIXTURE_RESULTS) uv run quarto render report
-	test -f report/_site/index.html
-	test -f report/_site/index.pdf
+	ANOMALY_DECAY_RESULTS=$(FIXTURE_RESULTS) uv run quarto render report \
+		--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"
+	test -f "$(FIXTURE_SITE_DIR)/index.html"
+	test -f "$(FIXTURE_SITE_DIR)/index.pdf"
 
 # Full online pipeline:
 # fetch -> metadata -> panel -> estimate -> descriptive -> figures -> report.

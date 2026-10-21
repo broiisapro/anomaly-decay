@@ -31,6 +31,11 @@ PAPER_IN_SAMPLE_MEAN = PAPER_TABLE1.get("in_sample_mean_pct")
 DATA_CONFIG = reporting.data_config()
 FRENCH_DOWNLOADED_ON = DATA_CONFIG.get("french", {}).get("downloaded_on")
 
+SPECS = reporting.specifications()
+SPEC_ORDER = [spec.id for spec in SPECS]
+SPEC_LABELS = {spec.id: spec.label for spec in SPECS}
+TERM_ORDER = reporting.TERM_ORDER
+
 main = reporting.load_optional("main.csv")
 decay = reporting.load_optional("decay.csv")
 robustness = reporting.load_optional("robustness.csv")
@@ -71,8 +76,8 @@ def comparison_vintage_text(frame: pl.DataFrame | None, primary: object) -> str:
 
 def phase2_status(frame: pl.DataFrame | None) -> str:
     if frame is None or frame.is_empty():
-        return "pending"
-    return "rendered above"
+        return "not in this render"
+    return "in this render"
 
 
 P2_MT_IDS = join_values([entry.get("id") for entry in (P2_MT.get("specs") or [])])
@@ -136,9 +141,15 @@ def render_table(
     headers: list[str] | None = None,
     formats: dict | None = None,
     missing: str = "The results file this table reads has not been produced yet.",
+    group: str | None = None,
+    labels: dict | None = None,
 ) -> Markdown:
     if frame is None:
         return Markdown(note(missing))
+    if group is not None:
+        return Markdown(
+            reporting.grouped_table(frame, group, columns, headers, formats, labels)
+        )
     return Markdown(reporting.table(frame, columns, headers, formats))
 ```
 
@@ -185,14 +196,18 @@ whether the decay is larger after publication than after the sample ends.
 # Headline result
 
 ```{python}
+#| tbl-colwidths: [22, 17, 14, 11, 14, 22]
 headline_view = render_table(
-    main,
+    reporting.ordered(main, {"term": TERM_ORDER}) if main is not None else None,
     ["term", "coef", "se", "t", "n_predictors", "n_obs"],
     ["Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
     formats={
+        "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
         "se": lambda value: reporting.num(value, 3),
         "t": reporting.tstat,
+        "n_predictors": reporting.count,
+        "n_obs": reporting.count,
     },
     missing="`main.csv` has not been produced yet; the main estimates render here after the estimation stage runs.",
 )
@@ -222,7 +237,9 @@ reporting.figure_block(
 
 Portfolio returns are the OSAP long-short series (`port == "LS"`) for every signal documented as
 a predictor in the OSAP signal documentation (`Cat.Signal` is `Predictor`, either `1_clear` or
-`2_likely`). The pinned release is `{python} coverage_value("vintage")`, with raw returns from
+`2_likely`).
+
+The pinned release is `{python} coverage_value("vintage")`, with raw returns from
 `{python} reporting.month_label(coverage_value("first_month"))` through
 `{python} reporting.month_label(coverage_value("last_month"))`; the panel keeps only in-sample and
 later months. The release provides `{python} coverage_value("n_predictors_op")` predictors with
@@ -242,10 +259,11 @@ re-downloading. The table below lists every coverage figure the descriptive stag
 this vintage.
 
 ```{python}
+#| tbl-colwidths: [52, 48]
 coverage_view = render_table(
-    coverage,
+    reporting.coverage_rows(coverage) if coverage is not None else None,
     ["item", "value"],
-    ["Item", "Value"],
+    ["Coverage item", "Value"],
     missing="`coverage.csv` has not been produced yet; the pinned vintage and its coverage render here after the descriptive stage runs.",
 )
 coverage_view
@@ -307,6 +325,7 @@ status.
 # Main result vs the original paper
 
 ```{python}
+#| tbl-colwidths: [40, 30, 30]
 def paper_coef_se_cell(term: str) -> str:
     coef, se = paper_term(term, "coef"), paper_term(term, "se")
     if coef is None or se is None:
@@ -330,7 +349,7 @@ paper_t_sample = reporting.ratio(
     paper_term("post_sample", "coef"), paper_term("post_sample", "se")
 )
 
-if main is None:
+if main is None or decay is None:
     comparison_rows = None
 else:
     comparison_rows = pl.DataFrame(
@@ -350,8 +369,8 @@ else:
                 pair_cell(
                     main_value("post_publication", "coef"), main_value("post_publication", "se")
                 ),
-                reporting.num(main_value("post_sample", "n_predictors"), 0),
-                reporting.num(main_value("post_sample", "n_obs"), 0),
+                reporting.count(main_value("post_sample", "n_predictors")),
+                reporting.count(main_value("post_sample", "n_obs")),
                 reporting.num(decay_value("pooled_ratio", "post_sample", "in_sample_mean"), 3),
                 "Predictor fixed effects; month-clustered",
                 reporting.pct(repl_decay_sample),
@@ -360,8 +379,8 @@ else:
             "paper": [
                 paper_coef_se_cell("post_sample"),
                 paper_coef_se_cell("post_publication"),
-                reporting.num(PAPER_TABLE.get("n_predictors"), 0),
-                reporting.num(PAPER_TABLE.get("n_obs"), 0),
+                reporting.count(PAPER_TABLE.get("n_predictors")),
+                reporting.count(PAPER_TABLE.get("n_obs")),
                 reporting.num(PAPER_IN_SAMPLE_MEAN, 3),
                 PAPER_TABLE.get("se_method") or reporting.NA_TEXT,
                 paper_decay_cell("post_sample"),
@@ -380,8 +399,15 @@ comparison_rows_view
 ```
 
 ```{python}
+#| tbl-colwidths: [15, 22, 14, 10, 21, 18]
 decay_view = (
-    decay.select("method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors")
+    reporting.ordered(
+        decay.select("method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors"),
+        {
+            "method": ("pooled_ratio", "normalized"),
+            "term": TERM_ORDER,
+        },
+    )
     if decay is not None
     else None
 )
@@ -389,11 +415,17 @@ decay_view = (
 decay_table_view = render_table(
     decay_view,
     ["method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors"],
-    ["Method", "Term", "Decay (%)", "SE (pp)", "IS mean (%/mo)", "N pred."],
+    ["Method", "Term", "Decline (%)", "SE (pp)", "IS mean (%/mo)", "N pred."],
     formats={
+        "method": lambda value: {
+            "pooled_ratio": "Pooled ratio",
+            "normalized": "Normalized",
+        }.get(str(value), str(value)),
+        "term": reporting.term_label,
         "decay_pct": lambda value: reporting.pct(value, 1),
         "se_pct": lambda value: reporting.num(value, 1),
         "in_sample_mean": lambda value: reporting.num(value, 3),
+        "n_predictors": reporting.count,
     },
     missing="`decay.csv` has not been produced yet; both decay methods render here after the estimation stage runs.",
 )
@@ -450,16 +482,24 @@ shows each row's post-sample and post-publication coefficient with a 95% confide
 interval.
 
 ```{python}
+#| tbl-colwidths: [30, 20, 10, 8, 7, 10, 15]
 robustness_view = render_table(
-    robustness,
-    ["label", "term", "coef", "se", "t", "n_predictors", "n_obs"],
+    reporting.ordered(robustness, {"spec": SPEC_ORDER, "term": TERM_ORDER})
+    if robustness is not None
+    else None,
+    ["spec", "term", "coef", "se", "t", "n_predictors", "n_obs"],
     ["Specification", "Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
     formats={
+        "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
         "se": lambda value: reporting.num(value, 3),
         "t": reporting.tstat,
+        "n_predictors": reporting.count,
+        "n_obs": reporting.count,
     },
     missing="`robustness.csv` has not been produced yet; the robustness table renders here after the estimation stage runs.",
+    group="spec",
+    labels=SPEC_LABELS,
 )
 robustness_view
 ```
@@ -479,16 +519,24 @@ vintage's last month and splits the post-publication shift by publication era (t
 across later and earlier literature.
 
 ```{python}
+#| tbl-colwidths: [30, 20, 10, 8, 7, 10, 15]
 extension_view = render_table(
-    extension,
-    ["label", "term", "coef", "se", "t", "n_predictors", "n_obs"],
+    reporting.ordered(extension, {"spec": SPEC_ORDER, "term": TERM_ORDER})
+    if extension is not None
+    else None,
+    ["spec", "term", "coef", "se", "t", "n_predictors", "n_obs"],
     ["Specification", "Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
     formats={
+        "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
         "se": lambda value: reporting.num(value, 3),
         "t": reporting.tstat,
+        "n_predictors": reporting.count,
+        "n_obs": reporting.count,
     },
     missing="`extension.csv` has not been produced yet; the extension table renders here after the estimation stage runs.",
+    group="spec",
+    labels=SPEC_LABELS,
 )
 extension_view
 ```
@@ -532,15 +580,30 @@ month move together, and the main specification is re-estimated in each of
 pre-registration labels the analysis exploratory = `{python} yes_no(P2_BOOTSTRAP.get("exploratory"))`.
 
 ```{python}
+#| tbl-colwidths: [24, 24, 12, 15, 13, 12]
+BOOTSTRAP_ORDER = P2_BOOTSTRAP.get("statistics") or []
+BOOTSTRAP_LABELS = {
+    "coef_post_sample": "Post-sample coefficient",
+    "coef_post_publication": "Post-publication coefficient",
+    "decay_pct_post_sample": "Post-sample pooled-ratio decay",
+    "decay_pct_post_publication": "Post-publication pooled-ratio decay",
+}
 bootstrap_view = render_table(
-    bootstrap,
+    reporting.ordered(bootstrap, {"spec": ["bootstrap_main"], "statistic": BOOTSTRAP_ORDER})
+    if bootstrap is not None
+    else None,
     ["spec", "statistic", "estimate", "boot_se", "ci_low", "ci_high"],
-    ["Spec", "Statistic", "Estimate", "Bootstrap SE", "Interval low", "Interval high"],
+    ["Specification", "Statistic", "Estimate", "Bootstrap SE", "Interval low", "Interval high"],
     formats={
-        column: (lambda value: reporting.num(value, 3))
-        for column in ("estimate", "boot_se", "ci_low", "ci_high")
+        "statistic": lambda value: BOOTSTRAP_LABELS.get(str(value), str(value)),
+        **{
+            column: (lambda value: reporting.num(value, 3))
+            for column in ("estimate", "boot_se", "ci_low", "ci_high")
+        },
     },
     missing="`bootstrap.csv` has not been produced yet; the pre-registered bootstrap intervals render here after the Phase 2 run.",
+    group="spec",
+    labels={"bootstrap_main": "Bootstrap of the main specification"},
 )
 bootstrap_view
 ```
@@ -564,13 +627,25 @@ documentation, and `in_sample_replicated`, the t statistic of the `op` long-shor
 predictor's own in-sample months, computed from the same data as this replication.
 
 ```{python}
+#| tbl-colwidths: [26, 13, 13, 17, 16, 15]
+TSTAT_ORDER = list((P2_MT.get("tstat_sources") or {}).keys())
+TSTAT_LABELS = {
+    "original_paper": "Original paper",
+    "in_sample_replicated": "Replicated in-sample",
+}
 tstat_summary_view = render_table(
-    tstat_summary,
+    reporting.ordered(tstat_summary, {"tstat_source": TSTAT_ORDER})
+    if tstat_summary is not None
+    else None,
     ["tstat_source", "n_predictors", "n_missing", "n_below_hurdle", "median_t", "hurdle_t"],
     ["T-statistic source", "Predictors", "Missing t", "Below hurdle", "Median t", "Hurdle"],
     formats={
+        "tstat_source": lambda value: TSTAT_LABELS.get(str(value), str(value)),
+        "n_predictors": reporting.count,
+        "n_missing": reporting.count,
+        "n_below_hurdle": reporting.count,
         "median_t": lambda value: reporting.tstat(value),
-        "hurdle_t": lambda value: reporting.num(value, 1),
+        "hurdle_t": lambda value: reporting.num(value, 2),
     },
     missing="`tstat_summary.csv` has not been produced yet; the t-statistic counts render here after the Phase 2 run.",
 )
@@ -578,16 +653,30 @@ tstat_summary_view
 ```
 
 ```{python}
+#| tbl-colwidths: [30, 20, 10, 8, 7, 10, 15]
+MT_ORDER = [entry.get("id") for entry in (P2_MT.get("specs") or [])]
+MT_LABELS = {
+    "mt_weak_original": "Weak split, original-paper t-statistic",
+    "mt_weak_replicated": "Weak split, replicated t-statistic",
+    "mt_tstat_continuous": "Continuous interaction (McLean–Pontiff Table II col. 4)",
+}
 multiple_testing_view = render_table(
-    multiple_testing,
+    reporting.ordered(multiple_testing, {"spec": MT_ORDER, "term": TERM_ORDER})
+    if multiple_testing is not None
+    else None,
     ["spec", "term", "coef", "se", "t", "n_weak", "n_excluded_missing_t"],
     ["Specification", "Term", "Coef (%/mo)", "SE", "t", "Weak pred.", "Excluded (missing t)"],
     formats={
+        "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
         "se": lambda value: reporting.num(value, 3),
         "t": reporting.tstat,
+        "n_weak": reporting.count,
+        "n_excluded_missing_t": reporting.count,
     },
     missing="`multiple_testing.csv` has not been produced yet; the pre-registered interaction estimates render here after the Phase 2 run.",
+    group="spec",
+    labels=MT_LABELS,
 )
 multiple_testing_view
 ```
@@ -649,9 +738,19 @@ and keeps both vintages' rows. The pre-registered preference order for the compa
 validation.
 
 ```{python}
+#| tbl-colwidths: [12, 11, 22, 10, 8, 10, 12, 15]
+VINTAGE_ORDER = [
+    P2_VINTAGES.get("primary"),
+    *(P2_VINTAGES.get("compare_preference") or []),
+]
+VINTAGE_SPEC_LABELS = {"main": "Main", "full_extension": "Extension"}
 vintage_view = render_table(
-    vintage_comparison,
-    ["spec", "vintage", "term", "coef", "se", "decay_pct", "n_predictors", "n_obs", "predictor_set"],
+    reporting.ordered(
+        vintage_comparison, {"spec": SPEC_ORDER, "vintage": VINTAGE_ORDER, "term": TERM_ORDER}
+    )
+    if vintage_comparison is not None
+    else None,
+    ["spec", "vintage", "term", "coef", "se", "decay_pct", "n_predictors", "n_obs"],
     [
         "Spec",
         "Vintage",
@@ -661,22 +760,27 @@ vintage_view = render_table(
         "Decay (%)",
         "N pred.",
         "N obs",
-        "Predictor set",
     ],
     formats={
+        "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
         "se": lambda value: reporting.num(value, 3),
         "decay_pct": lambda value: reporting.pct(value, 1),
+        "n_predictors": reporting.count,
+        "n_obs": reporting.count,
     },
     missing="`vintage_comparison.csv` has not been produced yet; the like-for-like vintage comparison renders here after the Phase 2 run.",
+    group="spec",
+    labels=VINTAGE_SPEC_LABELS,
 )
 vintage_view
 ```
 
 Rows keep only predictors whose `op` long-short series exists in both releases and whose signal
-documentation is present in both; the `predictor_set` column names the set used. `decay_pct` is
-the pooled-ratio decay computed within each vintage's own sample, so the comparison shows what a
-release update alone moves, with the predictor universe held fixed.
+documentation is present in both (the pre-registered predictor intersection; `predictor_set` in
+the results file). `decay_pct` is the pooled-ratio decay computed within each vintage's own
+sample, so the comparison shows what a release update alone moves, with the predictor universe
+held fixed.
 
 # Deviations from the original paper
 
@@ -790,8 +894,9 @@ The pre-registration lists every specification that is run, including any that f
 with its status and whether it was added after the freeze (`exploratory`).
 
 ```{python}
+#| tbl-colwidths: [20, 40, 10, 30]
 specs_view = render_table(
-    specs_run,
+    reporting.ordered(specs_run, {"spec": SPEC_ORDER}) if specs_run is not None else None,
     ["spec", "label", "status", "exploratory"],
     ["Spec", "Label", "Status", "Exploratory"],
     missing="`specs_run.csv` has not been produced yet; the full specification list renders here after the estimation stage runs.",
@@ -805,6 +910,7 @@ analysis with its results file and whether that file is present in this render; 
 items, if any, are labelled.
 
 ```{python}
+#| tbl-colwidths: [18, 16, 24, 21, 21]
 phase2_entries = []
 if PHASE2 is not None:
     phase2_entries.append(

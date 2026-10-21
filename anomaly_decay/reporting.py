@@ -25,20 +25,31 @@ from anomaly_decay.schemas import RESULTS_SCHEMAS
 if TYPE_CHECKING:
     from IPython.display import Image, Markdown
 
+    from anomaly_decay.config import Spec
+
 __all__ = [
     "NA_TEXT",
+    "TERM_LABELS",
+    "TERM_ORDER",
+    "COVERAGE_ORDER",
     "comparison_word",
+    "count",
+    "coverage_item_label",
+    "coverage_rows",
+    "coverage_value_text",
     "data_config",
     "direction",
     "factor",
     "figure",
     "figure_block",
+    "grouped_table",
     "load",
     "load_optional",
     "lookup",
     "magnitude",
     "month_label",
     "num",
+    "ordered",
     "original_paper",
     "pct",
     "phase2_preregistration",
@@ -46,7 +57,9 @@ __all__ = [
     "ratio",
     "ratio_pct",
     "results_dir",
+    "specifications",
     "table",
+    "term_label",
     "tstat",
 ]
 
@@ -56,9 +69,70 @@ DEFAULT_RESULTS_DIRNAME: str = "results"
 ORIGINAL_PAPER_PATH: Path = REPO_ROOT / "config" / "original_paper.yaml"
 DATA_CONFIG_PATH: Path = REPO_ROOT / "config" / "data.toml"
 PHASE2_PREREG_PATH: Path = REPO_ROOT / "config" / "phase2_preregistration.yaml"
+SPECIFICATIONS_PATH: Path = REPO_ROOT / "config" / "specifications.yaml"
 RASTER_EXTENSIONS: tuple[str, ...] = ("png", "jpg", "jpeg", "gif")
 FIGURE_EXTENSIONS: tuple[str, ...] = (*RASTER_EXTENSIONS, "svg")
 NA_TEXT: str = "n/a"
+
+TERM_LABELS: dict[str, str] = {
+    "post_sample": "Post-sample",
+    "post_publication": "Post-publication",
+    "post_sample_x_weak": "Post-sample × weak t",
+    "post_publication_x_weak": "Post-publication × weak t",
+    "post_sample_x_tstat": "Post-sample × in-sample t",
+    "post_publication_x_tstat": "Post-publication × in-sample t",
+    "post_publication_x_pub_after_2000": "Post-publication × published after 2000",
+}
+"""Prose labels for result terms; an unknown term renders its raw name."""
+
+TERM_ORDER: tuple[str, ...] = (
+    "post_sample",
+    "post_sample_x_weak",
+    "post_sample_x_tstat",
+    "post_sample_x_pub_after_2000",
+    "post_publication",
+    "post_publication_x_weak",
+    "post_publication_x_tstat",
+    "post_publication_x_pub_after_2000",
+)
+"""Reading order for terms: the sample-end window first, then the publication window."""
+
+COVERAGE_LABELS: dict[str, str] = {
+    "vintage": "OSAP release",
+    "first_month": "First return month",
+    "last_month": "Last return month",
+    "n_predictors_op": "Predictors with original-paper returns",
+    "n_published_by_2013": "Predictors published by 2013",
+    "n_clear": "Clear predictors",
+    "n_predictors_deciles_ew": "Predictors with equal-weighted decile returns",
+    "n_predictors_deciles_vw": "Predictors with value-weighted decile returns",
+    "n_predictor_months_op": "Predictor-months with original-paper returns",
+}
+COVERAGE_ORDER: tuple[str, ...] = (
+    "vintage",
+    "first_month",
+    "last_month",
+    "n_predictors_op",
+    "n_published_by_2013",
+    "n_clear",
+    "n_predictors_deciles_ew",
+    "n_predictors_deciles_vw",
+    "n_predictor_months_op",
+)
+MONTH_NAMES: tuple[str, ...] = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
 
 
 def results_dir() -> Path:
@@ -150,6 +224,13 @@ def pct(value: float | int | None, digits: int = 1) -> str:
     if value is None or math.isnan(value):
         return NA_TEXT
     return f"{value:.{digits}f}%"
+
+
+def count(value: float | int | None) -> str:
+    """Format a count with thousands separators (``101567`` → ``101,567``)."""
+    if value is None or math.isnan(value):
+        return NA_TEXT
+    return f"{int(value):,}"
 
 
 def tstat(value: float | None, digits: int = 2) -> str:
@@ -256,17 +337,105 @@ def factor(value: float | int | None, base: float | int | None, digits: int = 2)
 
 
 def month_label(value: object) -> str:
-    """Format a ``yyyymm`` key (integer or string) as ``yyyy-mm``.
+    """Format a ``yyyymm`` key as ``July 1926``.
 
     Used for month coverage read back from ``coverage.csv``; anything that is not a
-    six-digit key renders :data:`NA_TEXT` rather than raising inside a render.
+    six-digit key with a month between 1 and 12 renders :data:`NA_TEXT` rather than
+    raising inside a render.
     """
     if value is None:
         return NA_TEXT
     text = str(value)
     if len(text) != 6 or not text.isdigit():
         return NA_TEXT
-    return f"{text[:4]}-{text[4:]}"
+    month = int(text[4:])
+    if not 1 <= month <= 12:
+        return NA_TEXT
+    return f"{MONTH_NAMES[month - 1]} {int(text[:4])}"
+
+
+def term_label(term: object) -> str:
+    """Prose label for a result term (``post_sample`` → ``Post-sample``)."""
+    if term is None:
+        return NA_TEXT
+    return TERM_LABELS.get(str(term), str(term))
+
+
+def coverage_item_label(item: object) -> str:
+    """Plain-language label for a ``coverage.csv`` item, raw name for unknown items."""
+    if item is None:
+        return NA_TEXT
+    name = str(item)
+    return COVERAGE_LABELS.get(name, name.replace("_", " "))
+
+
+def coverage_value_text(item: object, value: object) -> str:
+    """Display text for a coverage value: months spelled out, counts with separators."""
+    if _is_missing(value):
+        return NA_TEXT
+    if item in ("first_month", "last_month"):
+        return month_label(value)
+    name = str(item)
+    text = str(value)
+    if name.startswith("n_") and text.isdigit():
+        return f"{int(text):,}"
+    return _format_cell(value)
+
+
+def coverage_rows(frame: pl.DataFrame) -> pl.DataFrame:
+    """Coverage rows as the report shows them: prose labels, month names, fixed order.
+
+    Returns a two-column frame (``item``, ``value``) of display strings, ordered by
+    :data:`COVERAGE_ORDER` so the table reads release, coverage, then predictor counts
+    instead of the alphabetical order of the results file.
+    """
+    ordered_frame = ordered(frame, {"item": list(COVERAGE_ORDER)})
+    items = ordered_frame["item"].to_list()
+    values = ordered_frame["value"].to_list()
+    return pl.DataFrame(
+        {
+            "item": [coverage_item_label(item) for item in items],
+            "value": [
+                coverage_value_text(item, value) for item, value in zip(items, values, strict=True)
+            ],
+        }
+    )
+
+
+def ordered(frame: pl.DataFrame, order: Mapping[str, Sequence[object]]) -> pl.DataFrame:
+    """Stable-sort *frame* into the given value order for each column in *order*.
+
+    Each mapping key is a column and each value the preferred order of its values. Rows
+    whose value is not listed keep their relative order after the listed ones, and ties
+    within a rank keep their original order, so a frame ordered by specification first
+    and term second reads main-first and post-sample-first without dropping unknown rows.
+    """
+    result = frame
+    ranks: list[str] = []
+    for column, values in order.items():
+        if column not in result.columns:
+            raise ValueError(f"order column not in frame: {column!r}; frame has {result.columns}")
+        rank = f"__rank_{column}"
+        mapping = {value: index for index, value in enumerate(values)}
+        result = result.with_columns(
+            pl.col(column).replace_strict(mapping, default=len(values)).alias(rank)
+        )
+        ranks.append(rank)
+    if not ranks:
+        return result
+    return result.sort(ranks, maintain_order=True).drop(ranks)
+
+
+def specifications(path: Path | None = None) -> list[Spec]:
+    """Load ``config/specifications.yaml`` in pre-registered file order.
+
+    The report takes the specification display order from here, so a table can never
+    drift into the alphabetical CSV order or a hand-written list.
+    """
+    from anomaly_decay.config import load_specifications
+
+    source = SPECIFICATIONS_PATH if path is None else path
+    return load_specifications(source)
 
 
 def _format_cell(value: object) -> str:
@@ -312,6 +481,59 @@ def table(
         cells = []
         for column, value in zip(columns, row, strict=True):
             formatter = formatters.get(column)
+            cells.append(formatter(value) if formatter is not None else _format_cell(value))
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def grouped_table(
+    df: pl.DataFrame,
+    group: str,
+    columns: Sequence[str],
+    headers: Sequence[str] | None = None,
+    formats: Mapping[str, Callable[[object], str]] | None = None,
+    labels: Mapping[object, str] | None = None,
+) -> str:
+    """Render *df* as a pipe table that prints each long *group* label once.
+
+    *group* must be the first of *columns*. The label is printed in bold in the first
+    column of the group's first row and left blank on the remaining rows, so a long
+    specification label does not repeat (and does not push the table past the page
+    width). *labels* maps group values to prose labels; unlisted values render as they
+    are. Order the frame with :func:`ordered` first.
+    """
+    if not columns:
+        raise ValueError("at least one column is required")
+    if columns[0] != group:
+        raise ValueError(f"group column {group!r} must be the first column")
+    missing = [column for column in columns if column not in df.columns]
+    if missing:
+        raise ValueError(f"columns not in frame: {missing}; frame has {df.columns}")
+    if headers is None:
+        headers = list(columns)
+    if len(headers) != len(columns):
+        raise ValueError(
+            f"headers ({len(headers)}) and columns ({len(columns)}) must have equal length"
+        )
+    formatters = formats if formats is not None else {}
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in columns) + " |",
+    ]
+    current: object = object()
+    for row in df.select(columns).iter_rows():
+        values = dict(zip(columns, row, strict=True))
+        key = values[group]
+        cells: list[str] = []
+        if key != current:
+            current = key
+            label = labels.get(key, str(key)) if labels is not None else str(key)
+            cells.append(f"**{_format_cell(label)}**")
+        else:
+            cells.append("")
+        for column in columns[1:]:
+            formatter = formatters.get(column)
+            value = values[column]
             cells.append(formatter(value) if formatter is not None else _format_cell(value))
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"

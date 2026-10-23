@@ -167,6 +167,7 @@ reproduce-fixture:
 		--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"
 	test -f "$(FIXTURE_SITE_DIR)/index.html"
 	test -f "$(FIXTURE_SITE_DIR)/index.pdf"
+	uv run pytest -q tests/test_memo.py
 
 # Full online pipeline:
 # fetch -> metadata -> panel -> estimate -> descriptive -> figures -> site.

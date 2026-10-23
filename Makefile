@@ -44,8 +44,8 @@ PHASE2_CLIS := anomaly_decay.estimate.bootstrap anomaly_decay.estimate.multiple_
                anomaly_decay.estimate.vintages
 
 .PHONY: fetch verify-hashes refresh-french metadata panel estimate descriptive \
-        figures report report-placeholder report-fixture reproduce reproduce-fixture \
-        phase2 reproduce-phase2 \
+        figures report site readme report-placeholder report-fixture reproduce \
+        reproduce-fixture phase2 reproduce-phase2 \
         fixture-metadata fixture-panel fixture-panel-check fixture-results \
         lint types test
 
@@ -85,6 +85,14 @@ figures:
 # This is the only target that writes report/_site/.
 report:
 	uv run quarto render report
+
+# The published site: the rendered report plus the per-predictor data files the
+# companion page reads at run time (written into report/_site/data/).
+site: report
+
+# Rewrite the generated results block in README.md from the committed results.
+readme:
+	uv run python -m anomaly_decay.readme
 
 # Development render from the committed dummy results; every missing results file renders
 # a pending note, so this exercises the report's not-yet-produced paths. The output goes to

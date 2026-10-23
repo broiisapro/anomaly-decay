@@ -4,6 +4,162 @@ toc: false
 format: html
 ---
 
-The interactive companion page arrives in this release. It will show each predictor's
-in-sample, post-sample and post-publication long-short returns and its event-year profile,
-computed from the committed results.
+Pick any predictor from the Open Source Asset Pricing universe to see its long–short
+return in the three windows and around the two events. Every value on this page comes
+from the committed results (`results/predictor_summary.csv` and
+`results/predictor_event_time.csv`), converted to static JSON by `make site`.
+
+These are **descriptive statistics, not the pre-registered specifications**: the
+windows are the panel's default convention and the returns are the `op` long–short
+portfolio, in **percent per month**. *SE* is the standard error of the monthly mean and
+*Months* is the number of usable monthly observations.
+
+```{ojs}
+//| echo: false
+viewof matching = {
+  const response = await fetch("data/predictors.json");
+  if (!response.ok) {
+    throw new Error(`cannot load data/predictors.json (HTTP ${response.status}); run \`make site\` first`);
+  }
+  const index = await response.json();
+  const names = index.map((row) => row.signalname);
+  const requested = new URLSearchParams(window.location.search).get("predictor");
+  const search = Inputs.search(names, {
+    label: "Search",
+    placeholder: "e.g. Mom12m",
+    width: "20rem"
+  });
+  if (requested && names.includes(requested)) {
+    const field = search.querySelector("input");
+    field.value = requested;
+    field.dispatchEvent(new Event("input", {bubbles: true}));
+  }
+  return search;
+}
+```
+
+```{ojs}
+//| echo: false
+viewof selected = Inputs.select(matching, {
+  label: `Predictor (${matching.length})`,
+  width: "20rem"
+})
+```
+
+```{ojs}
+//| echo: false
+profileView = {
+  if (selected == null) {
+    return html`<p class="text-muted">No predictor matches your search.</p>`;
+  }
+  const response = await fetch(`data/predictors/${encodeURIComponent(selected)}.json`);
+  if (!response.ok) {
+    throw new Error(`cannot load the profile for ${selected} (HTTP ${response.status})`);
+  }
+  const profile = await response.json();
+  const fmt = (value, digits = 3) => value == null ? "n/a" : value.toFixed(digits);
+
+  const windowLabels = {
+    in_sample: "In-sample",
+    post_sample: "Post-sample",
+    post_publication: "Post-publication"
+  };
+  const windowRows = Object.keys(windowLabels).map((key) => ({
+    key,
+    label: windowLabels[key],
+    ...profile.windows[key]
+  }));
+
+  const header = html`<div>
+    <h3 class="mt-0 mb-1">${profile.signalname}</h3>
+    <p class="text-muted mb-1">${profile.authors} · ${profile.journal} ${profile.pub_year}</p>
+    <p class="mb-3">
+      Sample ${profile.sample_start_year}–${profile.sample_end_year} ·
+      ${profile.clear ? "clear predictor" : "likely predictor"} ·
+      economic category: ${profile.cat_economic}
+    </p>
+  </div>`;
+
+  const table = html`<table class="table table-sm" style="max-width: 34rem">
+    <thead><tr>
+      <th>Window</th>
+      <th class="text-end">Mean (%/month)</th>
+      <th class="text-end">SE</th>
+      <th class="text-end">Months</th>
+    </tr></thead>
+    <tbody>${windowRows.map((row) => html`<tr>
+      <td>${row.label}</td>
+      <td class="text-end">${fmt(row.mean_ret)}</td>
+      <td class="text-end">${fmt(row.se_mean)}</td>
+      <td class="text-end">${row.n_months}</td>
+    </tr>`)}</tbody>
+  </table>`;
+
+  const meansChart = Plot.plot({
+    height: 180,
+    marginLeft: 110,
+    marginRight: 30,
+    x: {label: "Mean long–short return (% per month)", grid: true, zero: true},
+    y: {label: null, domain: windowRows.map((row) => row.label)},
+    color: {
+      domain: ["In-sample", "Post-sample", "Post-publication"],
+      range: ["#0072B2", "#D55E00", "#009E73"],
+      legend: false
+    },
+    marks: [
+      Plot.ruleX([0], {stroke: "#555"}),
+      Plot.ruleY(windowRows, {
+        x1: (row) => row.mean_ret - row.se_mean,
+        x2: (row) => row.mean_ret + row.se_mean,
+        y: "label",
+        stroke: "label",
+        strokeWidth: 2
+      }),
+      Plot.dot(windowRows, {x: "mean_ret", y: "label", fill: "label", r: 5})
+    ]
+  });
+
+  const eventPanel = (anchor, label) => {
+    const rows = profile.event_time[anchor];
+    if (rows.length === 0) {
+      return html`<div><h5>${label}</h5>
+        <p class="text-muted">No event-year observations for this predictor.</p></div>`;
+    }
+    const chart = Plot.plot({
+      height: 190,
+      marginLeft: 70,
+      marginRight: 30,
+      x: {label: "Event year (0 = first year after the event)", tickFormat: "d", grid: true},
+      y: {label: "Mean long–short return (% per month)", grid: true},
+      marks: [
+        Plot.ruleY([0], {stroke: "#444"}),
+        Plot.ruleX([0], {stroke: "#888", strokeDasharray: "4 3"}),
+        Plot.line(rows, {x: "event_year", y: "mean_ret", stroke: "#0072B2", strokeWidth: 2}),
+        Plot.dot(rows, {x: "event_year", y: "mean_ret", fill: "#0072B2", r: 3})
+      ]
+    });
+    return html`<div><h5>${label}</h5>${chart}</div>`;
+  };
+  const eventChart = html`<div>
+    ${eventPanel("sample_end", "Sample end (year 0 = first post-sample year)")}
+    ${eventPanel("publication", "Publication (year 0 = first post-publication year)")}
+  </div>`;
+
+  return html`<div>
+    ${header}
+    ${table}
+    <h4>Window means with ±1 SE</h4>
+    ${meansChart}
+    <h4>Event-year profile</h4>
+    ${eventChart}
+    <p class="text-muted small">Year −1 is the last in-sample year (sample end) or the
+    publication year; year 0 is the first year after the event. The dashed line marks
+    year 0 and the solid horizontal line is zero.</p>
+  </div>`;
+}
+```
+
+The three window means above are the same long–short portfolio in the in-sample,
+post-sample and post-publication windows. The event-year profile follows the predictor
+from five years before the event to nine years after it; a gap in the line is a year
+without usable monthly observations.

@@ -91,6 +91,7 @@ report:
 # The published site: the rendered report plus the per-predictor data files the
 # companion page reads at run time (written into report/_site/data/).
 site: report
+	uv run python -m anomaly_decay.site --results-dir $(RESULTS_DIR) --out report/_site/data
 
 # Rewrite the generated results block in README.md from the committed results.
 readme:
@@ -168,7 +169,7 @@ reproduce-fixture:
 	test -f "$(FIXTURE_SITE_DIR)/index.pdf"
 
 # Full online pipeline:
-# fetch -> metadata -> panel -> estimate -> descriptive -> figures -> report.
+# fetch -> metadata -> panel -> estimate -> descriptive -> figures -> site.
 reproduce:
 	$(MAKE) fetch
 	$(MAKE) metadata
@@ -176,7 +177,7 @@ reproduce:
 	$(MAKE) estimate
 	$(MAKE) descriptive
 	$(MAKE) figures
-	$(MAKE) report
+	$(MAKE) site
 
 # Phase 2 analyses, pre-registered in config/phase2_preregistration.yaml and frozen with the
 # specifications by the `specs-frozen` tag. Each CLI module is imported before use so that a

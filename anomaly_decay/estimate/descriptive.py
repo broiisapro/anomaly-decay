@@ -1,6 +1,6 @@
 """Descriptive results feeding the figures and the report (architecture §5.3).
 
-All three tables cover the **full-extension universe** (decision O24): the ``op``
+All three tables cover the **full-extension universe**: the ``op``
 portfolio only, every predictor in the panel, every month of the vintage, default
 window convention. They answer "what does the raw data look like by window and around
 the sample-end and publication events", not "what do the regressions say" — the

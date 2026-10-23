@@ -8,7 +8,7 @@ with its event-time profile (FR-3.1), and a two-page research-assistant memo in 
 professor reads first (FR-3.2). Both live in the published Quarto site, so the report, the companion
 page and the memo are one build from the same committed `results/`. The epic also adds the two
 descriptive results files that make a per-predictor view possible without republishing monthly OSAP
-series, and it closes with the v1.1.0 release planned in decision O47.
+series, and it closes with the planned v1.1.0 release.
 
 ## How it works
 
@@ -32,7 +32,7 @@ selects one. The build produces `index.html`, `index.pdf`, `companion.html` and 
 `python -m anomaly_decay.site --results-dir results --out report/_site/data`, which writes the JSON
 the companion page fetches at run time. The Pages workflow builds with `make site` and uploads
 `report/_site`; it still runs only on `release: published` and `workflow_dispatch`. Fixture renders
-continue to write to `data/processed/fixture/_site/` and never touch `report/_site/` (O39), so the
+continue to write to `data/processed/fixture/_site/` and never touch `report/_site/`, so the
 published site is always built from the committed full-data results.
 
 #123 added an **Explore and summary** section to the report, after the headline figure, linking
@@ -42,7 +42,7 @@ The report PDF is 14 pages after that polish, down from 15.
 
 ### Descriptive data products (#110, #112)
 
-Two files complete the results contract (O45). Both are additions to `RESULTS_SCHEMAS` and
+Two files complete the results contract. Both are additions to `RESULTS_SCHEMAS` and
 `RESULTS_SORT_KEYS`, so they read and write through `anomaly_decay.io` like every other result:
 sorted key columns, fixed column order, LF endings, fixed float formatting.
 
@@ -63,7 +63,7 @@ sorted key columns, fixed column order, LF endings, fixed float formatting.
 
 The `descriptive` Make stage calls the CLI after the Phase 1 descriptive tables. The full-data files
 were produced on the Mac from the verified cache with the Makefile's thread environment and committed
-alone, with no other file under `results/` changed (O34):
+alone, with no other file under `results/` changed:
 
 - `predictor_info.csv`: 212 predictors, 165 clear and 47 likely, publication years 1973–2016, 25
   journals and 35 economic categories.
@@ -77,7 +77,7 @@ alone, with no other file under `results/` changed (O34):
 
 Yearly aggregation is deliberate. The companion page needs a readable event-time profile, not a
 second copy of the monthly OSAP panel; event years keep the site on derived statistics and keep the
-published JSON small (O45).
+published JSON small.
 
 ### Companion page (#111)
 
@@ -133,7 +133,7 @@ match shows a plain "No predictor matches your search" message.
 ### RA memo (#113, #114)
 
 `report/memo.qmd` replaces the stub with the memo, rendered only to Typst PDF at
-`report/_site/memo.pdf` (O46). The memo is US Letter at 10pt with 0.7in horizontal and 0.6in
+`report/_site/memo.pdf`. The memo is US Letter at 10pt with 0.7in horizontal and 0.6in
 vertical margins, and it fits two pages. The header carries the title, the subtitle, the author
 (`Moksh Siruvani`), the render date (`date: today`) and links to the live report and the repository.
 
@@ -211,7 +211,7 @@ request.
   selector, and the builder can remove stale profiles and write the index last, which makes a
   rebuild deterministic and self-consistent.
 - **Yearly event-time aggregation.** The site should show derived statistics, not republish monthly
-  OSAP series (O45). Event years make the profile readable, bound the file size, and match the
+  OSAP series. Event years make the profile readable, bound the file size, and match the
   chart's horizontal axis; monthly values remain in the panel and the report's own event-time figure.
 - **Descriptive, and labelled so.** The two new files were produced after the specification freeze
   and are not specifications. Both the companion page and the report call them descriptive, and the
@@ -259,9 +259,9 @@ request.
   `data/processed/fixture/_site/memo.pdf` are the two build outputs. The document must keep the
   Typst page assertion and the `papersize: us-letter` front matter; `tests/test_memo.py` pins both,
   the section set, the header fields and the no-typed-number rule.
-- **Release.** v1.1.0 is cut by the orchestrator's release script after the wave audit. Its assets
+- **Release.** v1.1.0 is cut by the release script. Its assets
   should be the 14 result CSVs (the 12 existing files plus the two profiles), the report PDF and the
-  memo PDF, so the release matches the site built from the same committed results (O47).
+  memo PDF, so the release matches the site built from the same committed results.
 
 ## Deviations from the plan
 
@@ -282,11 +282,10 @@ request.
 - **The memo has no figure.** The event-time figure was optional and the six required sections plus
   the comparison table already fill the two-page budget; the memo points to the report's figures
   instead.
-- **The fixture render builds the memo but does not run its test module after rendering.** The
-  Typst assertion in the document fails the fixture render if the memo exceeds two pages, so the
-  budget is still enforced in CI. A one-line Makefile addition after the fixture render would also
-  run `tests/test_memo.py` against the built fixture PDF; it was requested in the memo and test pull
-  requests but the Makefile belongs to the site workstream.
+- **The fixture render checks the memo budget twice.** The Typst assertion in the document fails the
+  fixture render if the memo exceeds two pages, and `make reproduce-fixture` then runs
+  `tests/test_memo.py`, which counts page objects in the built fixture PDF. CI therefore enforces
+  the budget from both directions.
 - **The page counter assumes uncompressed page objects.** Typst 0.15.1 writes page objects in plain
   object syntax, which is what the byte counter reads. If a later Typst compresses objects,
   the page-tree cross-check fails first and the counter must be updated rather than silently
@@ -329,5 +328,5 @@ request.
   when `results/` is unchanged, so the memo is not byte-identical across builds; that is intended
   for a dated memo, and the result files themselves stay byte-identical.
 - **The v1.1.0 release and Pages deployment are not in this document's pull requests.** They are
-  orchestrator steps after the wave audit (O47); this epic delivers the site, the data, the memo and
-  the tests that the release packages.
+  release steps taken outside this epic's pull requests; this epic delivers the site, the data, the
+  memo and the tests that the release packages.

@@ -3,9 +3,9 @@
 OSAP is fetched through the ``openassetpricing`` package (Google Drive backend) wrapped
 with retries/backoff and frame validation: the package itself has no retries and does not
 detect Drive's "quota exceeded" HTML page. Canonical copies are written to
-``data/raw/<vintage>/``; Ken French canonical copies to ``data/pinned/`` (committed, see
-O16). ``data/manifest.lock`` records ``<sha256>  <path relative to repo root>  <bytes>``
-lines sorted by path.
+``data/raw/<vintage>/``; Ken French canonical copies to ``data/pinned/`` (committed).
+``data/manifest.lock`` records ``<sha256>  <path relative to repo root>  <bytes>`` lines
+sorted by path.
 
 The cache is verified before it is trusted: a file whose size and hash match its manifest
 entry is never re-downloaded (``cached: <path>``), and a fresh download that disagrees

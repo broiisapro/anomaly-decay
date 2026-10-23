@@ -1,4 +1,4 @@
-"""Static JSON data for the interactive companion page (Phase 3, decision O46).
+"""Static JSON data for the interactive companion page (Phase 3).
 
 The companion page is a static HTML page whose Observable JS cells fetch one JSON file
 per predictor at run time. This module builds those files from ``results/`` only:

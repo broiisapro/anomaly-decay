@@ -10,7 +10,7 @@ descriptive, the per-predictor profile and the three Phase 2 CLIs into a tempora
 results directory, and compares every committed ``results/*.csv`` with its fresh copy.
 On macOS the comparison is byte for byte; elsewhere floats are compared at 1e-10
 relative/absolute and text exactly, because the linear-algebra libraries differ across
-operating systems (decision O34).
+operating systems.
 
 Subprocesses run with the Makefile's thread environment (OpenMP/BLAS pools pinned to one
 thread). ``POLARS_MAX_THREADS`` is removed from the inherited environment: the committed
@@ -219,7 +219,7 @@ def _first_difference(committed: Path, rebuilt: Path) -> str:
 
 
 def _assert_frames_match(name: str, expected: pl.DataFrame, actual: pl.DataFrame) -> None:
-    """Compare one results table with the cross-platform tolerance (O34)."""
+    """Compare one results table with the cross-platform tolerance."""
     try:
         assert_frame_equal(
             expected,

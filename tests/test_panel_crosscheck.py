@@ -27,7 +27,7 @@ PORTFOLIOS: tuple[str, ...] = ("op", "deciles_ew", "deciles_vw")
 
 
 def _metadata_from_signal_doc(signal_doc_path: Path) -> pl.DataFrame:
-    """Equivalent local metadata helper used until agent A's #11 lands.
+    """Equivalent local metadata helper used before the metadata module landed (#11).
 
     Reads the canonical signal doc, keeps ``Cat.Signal == "Predictor"`` and maps the
     columns to :data:`anomaly_decay.schemas.PREDICTORS_SCHEMA`.

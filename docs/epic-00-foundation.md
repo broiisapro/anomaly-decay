@@ -77,16 +77,17 @@ Quarto report that renders from `results/` alone.
 - **Specification resolution is strict.** Unknown keys, unknown or circular `base`
   chains, and enum values outside the documented sets raise `ConfigError`. Later
   additions must carry `exploratory: true`; the freeze is enforced around the
-  `specs-frozen` tag by the orchestrator procedure.
+  `specs-frozen` tag, which the maintainer creates before the first full-data
+  estimation.
 - **CI uses `astral-sh/setup-uv` rather than the runner PATH.** The host's `uv` lives in
   `~/.local/bin`, which a launchd-managed runner process may not inherit; the action
   installs the pinned version (`0.11.26`) explicitly. `actions/checkout@v5` (Node 24) is
   verified for the self-hosted macOS ARM64 runners. Action caching is off because uv's
   own wheel cache is shared across the three runners on this machine.
 - **The report lists its inputs explicitly** (`project.render: [index.qmd]`). Quarto's
-  directory discovery consults git ignore rules; agent worktrees live under a
-  gitignored `.worktrees/` path, where discovery silently finds zero inputs. Explicit
-  `render` makes the project deterministic in both worktrees and normal clones.
+  directory discovery consults git ignore rules, so a checkout nested under an ignored
+  path can silently find zero inputs. Explicit `render` makes the project deterministic
+  from any checkout.
 - **The offline gate renders the PDF too.** `reproduce-fixture` asserts both
   `report/_site/index.html` and `report/_site/index.pdf`, so a Typst regression fails CI
   instead of going unnoticed.
@@ -122,11 +123,11 @@ Quarto report that renders from `results/` alone.
 - **The report's `results_dir` default is repo-root-relative** through
   `QUARTO_PROJECT_DIR`, rather than relative to `report/`; this matches the documented
   `results/` location and works for both render targets.
-- **`project.render` is explicit** in `_quarto.yml` (see the worktree discovery reason).
+- **`project.render` is explicit** in `_quarto.yml` (see the ignored-path discovery
+  reason).
 - **Typst PDF in CI works on the self-hosted runner.** The first `reproduce-fixture` run
   that includes the render compiled `index.typ` to `index.pdf` and asserted both output
-  files (run 39004970881); no HTML-only fallback is needed, so decision S11 is not
-  exercised.
+  files (run 39004970881); no HTML-only fallback is needed.
 - **Ken French pinned files currently run through 2026-08** (the download date's latest
   month), not through the OSAP vintage's 2024-12; this is harmless for joins because the
   panel only uses months present in the returns.
@@ -143,7 +144,7 @@ Quarto report that renders from `results/` alone.
   inline number per coefficient, with all sections present but marked as placeholders.
 - The signal-doc fixture is a reduced 10-column extract of the OSAP signal documentation
   covering the columns the pipeline consumes; it is not the full documentation file.
-- Nothing is tagged yet: `specs-frozen` is created by the orchestrator before the first
+- Nothing is tagged yet: `specs-frozen` is created by the maintainer before the first
   full-data estimation, and `epic-00-complete` after this epic merges.
 
 ## Correction (Epic 01)

@@ -60,7 +60,9 @@ the cache. `make reproduce-fixture` needs no network. The report is written to `
 
 ## Report and documentation
 
-- Report: <https://broiisapro.github.io/anomaly-decay/> (available after release)
+- Report: <https://broiisapro.github.io/anomaly-decay/>
+- Explore a predictor: <https://broiisapro.github.io/anomaly-decay/companion.html>
+- RA memo (PDF): <https://broiisapro.github.io/anomaly-decay/memo.pdf>
 - Architecture, interface contracts and data flow: [docs/architecture.md](docs/architecture.md)
 - Epic write-ups: [docs/](docs/)
 

@@ -188,7 +188,9 @@ def test_readme_has_the_release_sections() -> None:
     ):
         assert command in text
     assert "https://broiisapro.github.io/anomaly-decay/" in text
-    assert "available after release" in text
+    assert "https://broiisapro.github.io/anomaly-decay/companion.html" in text
+    assert "https://broiisapro.github.io/anomaly-decay/memo.pdf" in text
+    assert "available after release" not in text
     assert "docs/architecture.md" in text
     assert "MIT licence" in text
     assert "does not redistribute raw data" in text

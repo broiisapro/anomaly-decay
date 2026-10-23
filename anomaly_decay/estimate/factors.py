@@ -1,4 +1,4 @@
-"""Factor-adjusted long-short returns (architecture §4.9, decision O10).
+"""Factor-adjusted long-short returns (architecture §4.9).
 
 For every (signalname, portfolio) the six FF5 + momentum factors are regressed on the
 predictor's long-short return using **in-sample months only** — the in-sample window is

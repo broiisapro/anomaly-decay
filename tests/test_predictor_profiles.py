@@ -1,4 +1,4 @@
-"""Tests for the per-predictor information and event-year profiles (decision O45)."""
+"""Tests for the per-predictor information and event-year profiles."""
 
 from __future__ import annotations
 

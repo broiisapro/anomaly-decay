@@ -1,4 +1,4 @@
-"""Per-predictor bibliographic metadata and event-year return profiles (decision O45).
+"""Per-predictor bibliographic metadata and event-year return profiles.
 
 Two descriptive data products that feed the Phase 3 companion page. Neither is a
 specification: they summarise the committed panel directly, after the specification

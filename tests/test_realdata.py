@@ -3,7 +3,7 @@
 The whole module is skipped with a clear reason unless ``data/raw/202510`` exists
 (``make fetch``). The checks are structural only -- coverage, keys, units, date sanity
 -- because nothing on the full data may compute returns by window, regressions or decay
-before the ``specs-frozen`` tag (pre-registration guard, O26). The single return
+before the ``specs-frozen`` tag (pre-registration guard). The single return
 statistic here is the median absolute long-short return, a percent-per-month unit check.
 
 ``tests/fixtures/realdata_expectations.csv`` records the per-predictor first/last

@@ -23,7 +23,7 @@ GP = ("GP", 1963, 2010, 2013)
 
 
 def _local_metadata() -> pl.DataFrame:
-    """Build the fixture metadata frame without agent A's metadata module (issue #11)."""
+    """Build the fixture metadata frame directly from the signal doc (issue #11)."""
     doc = pl.read_csv(
         FIXTURE_OSAP / str(VINTAGE) / "signal_doc.csv", infer_schema_length=500
     ).filter(pl.col("Cat.Signal") == "Predictor")

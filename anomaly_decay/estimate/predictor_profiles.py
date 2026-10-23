@@ -53,7 +53,7 @@ def predictor_info(metadata: pl.DataFrame) -> pl.DataFrame:
     """Per-predictor bibliographic table for the site.
 
     *metadata* is the predictor table per :data:`anomaly_decay.schemas.PREDICTORS_SCHEMA`
-    (one row per predictor, sorted by ``signalname``). Output per
+    (one row per predictor). Output per
     ``RESULTS_SCHEMAS["predictor_info.csv"]``: ``signalname``, ``authors``, ``journal``,
     ``pub_year``, ``sample_start_year``, ``sample_end_year``, ``clear`` and
     ``cat_economic``; the three year columns are cast to Int64 and rows are sorted by

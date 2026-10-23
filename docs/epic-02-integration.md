@@ -13,10 +13,10 @@ data-vintage sensitivity — as report sections, and let CI enforce the freeze.
 ### Pre-registration and the full-data run
 
 - `config/phase2_preregistration.yaml` (bootstrap, multiple testing, vintages) and the verified
-  values in `config/original_paper.yaml` land first (#57); the orchestrator's freeze watcher creates
-  the annotated tag `specs-frozen` on the first `origin/main` commit where both pre-registration
-  files match the approved SHA-256s and no commit has ever touched `results/` (decision O32). The
-  tag was created on `ce0e0d54` about a minute after the merge.
+  values in `config/original_paper.yaml` land first (#57); the freeze script creates the annotated
+  tag `specs-frozen` on the first `origin/main` commit where both pre-registration files match the
+  approved SHA-256s and no commit has ever touched `results/`. The tag was created on `ce0e0d54`
+  about a minute after the merge.
 - `tests/test_specs.py` compares both files with their tagged versions through one parametrised
   test; the `tests` CI job sets `ANOMALY_DECAY_REQUIRE_FREEZE=1`, so the freeze is enforced on
   every run (#59).
@@ -51,10 +51,11 @@ specification appendix. Rules the document follows:
 ### Phase 2 analyses
 
 - **Schemas and loader** (#64): `RESULTS_SCHEMAS` and `RESULTS_SORT_KEYS` gain `bootstrap.csv`,
-  `multiple_testing.csv`, `tstat_summary.csv` and `vintage_comparison.csv` with exactly the O37
-  columns, order and dtypes; `anomaly_decay.config.load_phase2_preregistration(path) -> Phase2Prereg`
-  returns frozen dataclasses for the three sections and rejects unknown keys, missing keys, wrong
-  types, invalid enum values, duplicate spec ids and undeclared `tstat_source` references.
+  `multiple_testing.csv`, `tstat_summary.csv` and `vintage_comparison.csv` with exactly the
+  registered columns, order and dtypes; the loader
+  `anomaly_decay.config.load_phase2_preregistration(path) -> Phase2Prereg` returns frozen
+  dataclasses for the three sections and rejects unknown keys, missing keys, wrong types, invalid
+  enum values, duplicate spec ids and undeclared `tstat_source` references.
 - **Bootstrap inference** (#65, #66): a moving-block bootstrap by calendar month of the main
   specification's estimation sample — 12-month blocks from starts drawn uniformly in `0..T-L`
   without wrapping, concatenated and truncated to the sample length, every predictor's observations
@@ -85,7 +86,7 @@ specification appendix. Rules the document follows:
 ### CI
 
 The four required checks (`lint`, `types`, `tests`, `reproduce-fixture`) run on the single
-throttled runner (decision H4); the `tests` job fetches tags and requires the freeze. The report is
+throttled runner; the `tests` job fetches tags and requires the freeze. The report is
 part of the `reproduce-fixture` gate, which renders HTML and PDF from fixture results on every PR,
 and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
 
@@ -95,7 +96,7 @@ and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
   committed fixture and must read correctly on real results later; sign-dependent wording and
   inline computation are what make that possible, and the two source tests keep the discipline
   from decaying once the document stops being edited every day.
-- **The paper's numbers live in config, entered only by the maintainer (O25/O33).** The report
+- **The paper's numbers live in config, entered only by the maintainer.** The report
   recomputes the 26%/58% headline from the printed coefficients and the 0.582 in-sample mean, shows
   the rounded headline next to the recomputation, and records the printed-significance
   inconsistency for the post-sample coefficient rather than silently repeating the stars.
@@ -114,7 +115,7 @@ and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
 - **The vintage comparison holds the predictor universe fixed.** Only signals present in both
   releases enter, so the comparison isolates data revision rather than composition change; the
   predictor dates were also compared and happened to be identical.
-- **Determinism claim scoped per platform (O34).** Reruns on one machine are byte-identical; across
+- **Determinism claim scoped per platform.** Reruns on one machine are byte-identical; across
   operating systems the linear-algebra libraries differ, so the committed results are produced on
   macOS and agree across platforms to about 1e-13 relative, with tests comparing at 1e-10. The
   report states this in the reproduction section.
@@ -152,7 +153,7 @@ and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
   interpreted. Phase 2 files are absent there and render pending callouts in the fixture document.
 - **The window deviations are reported, not corrected.** OSAP's year-granularity sample windows
   differ from the original papers' monthly windows in the documented hand-checked cases; the rule
-  stays "OSAP SignalDoc years are the rule" (decision O38).
+  stays "OSAP SignalDoc years are the rule".
 - **The comparison vintage is whichever release can be downloaded.** The pre-registered preference
   order (`202410, 202408, 2023`) was exercised in full: 2024.10 succeeded on the 18th round after
   53 refusals, so the later fallbacks were never attempted.
@@ -162,12 +163,12 @@ and `make phase2` runs the three Phase 2 CLIs into a chosen results directory.
   check uses the explicit-argument equivalent (`--panel --specs --results-dir`); the frozen CLI was
   not changed.
 
-## Corrections (wave 04)
+## Corrections to the first full-data render
 
-The wave-03 audit found three report problems (R1–R3) and one framing gap; they were fixed in
-#89–#91 and the corrected full-data render was reviewed before the `epic-02-complete` tag.
+A review of the first full-data render found three report problems and one framing gap; they were
+fixed in #89–#91 and the corrected render was reviewed before the `epic-02-complete` tag.
 
-- **R1 — fixture renders overwrote the real report.** `report/_site/` is now written only by
+- **Fixture renders overwrote the real report.** `report/_site/` is now written only by
   `make report` (and therefore by `make reproduce`). `report-fixture`, `report-placeholder` and
   `reproduce-fixture` pass an absolute `--output-dir "$(CURDIR)/$(FIXTURE_SITE_DIR)"` and write to
   `data/processed/fixture/_site/`; `reproduce-fixture` asserts the HTML and PDF exist there.
@@ -175,7 +176,7 @@ The wave-03 audit found three report problems (R1–R3) and one framing gap; the
   `report/_site` or renders without the output override. Verified by running `make report`, then
   `make reproduce-fixture`: the PDF and HTML hashes in `report/_site/` were unchanged
   (`39d58706…` / `d8a7e24a…` in #89).
-- **R2 — table layout and order.** Every table declares `tbl-colwidths`, so Typst wraps cell text
+- **Table layout and order.** Every table declares `tbl-colwidths`, so Typst wraps cell text
   inside the text block instead of sizing columns from the longest string. Row order comes from
   `anomaly_decay.config.load_specifications` (file order) and, for Phase 2, from
   `config/phase2_preregistration.yaml`: `main` first, then the pre-registered order; terms read
@@ -185,7 +186,7 @@ The wave-03 audit found three report problems (R1–R3) and one framing gap; the
   (`count` adds thousands separators). The page-break shortcode before the extension and
   multiple-testing sections keeps their tables from splitting a row across pages. All twelve
   tables were checked in the rendered PDF with `pdftotext -layout`.
-- **R3 — wording.** The Data section states the main universe as the predictors published by 2013
+- **Wording.** The Data section states the main universe as the predictors published by 2013
   (clear or likely) and reports the clear count separately; pre-registration values render as
   words ("confirmatory (pre-registered)", "excluded and counted", "moving block by month");
   sentences whose numbers come from an optional results file are emitted only when that file
@@ -193,7 +194,7 @@ The wave-03 audit found three report problems (R1–R3) and one framing gap; the
   distinguishes the real 15-predictor data fixture from the fictional results fixture; and
   comparisons of negative decay estimates say "a larger/smaller decline" instead of
   "below/above".
-- **Multiple testing and Table II column 4 (decision O41).** `config/original_paper.yaml` records
+- **Multiple testing and Table II column 4.** `config/original_paper.yaml` records
   the paper's column-4 interactions (`table2_col4`: post-publication × in-sample t −0.063 (0.018),
   post-sample × t −0.061 (0.023), 97 predictors, 51,944 observations). The report prints the
   paper's post-publication interaction next to the replication's −0.051 (0.016), states that the
@@ -224,6 +225,6 @@ remaining layout note is that a table can continue on the next page with its hea
   options; the extension's last month is the vintage's, not a guarantee per predictor.
 - **Cross-platform float agreement is approximate.** Byte-identical reruns hold per platform;
   committed results were produced on macOS.
-- **The runner is a single throttled machine with no automatic restart** (decision H4; the launchd
-  job has no `KeepAlive`). It crashed once during this wave and blocked all CI until it was
+- **The runner is a single throttled machine with no automatic restart** (the launchd
+  job has no `KeepAlive`). It crashed once and blocked all CI until it was
   restarted manually; a watchdog is the recommended follow-up.

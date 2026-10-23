@@ -27,7 +27,7 @@ four Phase 2 files and records how the analysis is reproduced.
   accepted as any positive integer; every other value is pinned to the registered text.
 - Every result below was produced after `specs-frozen` (annotated tag `6e2bcaeb` on `ce0e0d5`) and
   after the first full-data Phase 1 run (#58), with byte-identical reruns and the Makefile's
-  thread pins (decision O12/O34).
+  thread pins.
 
 ### Bootstrap inference (#65, #66)
 
@@ -147,7 +147,7 @@ an unmapped rename fails loudly with the observed columns. `config/data.toml` re
 pre-registered comparison preference `[202410, 202408, 2023]`; the primary vintage and the Ken
 French entries are unchanged.
 
-Google Drive refused the 2024.10 release for most of the session, always by serving its "quota
+Google Drive refused the 2024.10 release for several hours, always by serving its "quota
 exceeded" HTML page instead of the CSV; the frame validation caught it as a missing `Acronym`
 column and the documented backoff retried. The preference order was retried on a 20-minute loop.
 Attempts at 2024.10 (timestamps ET):

@@ -1,6 +1,6 @@
 # Original-paper reference values for the report.
 #
-# Entered by the project maintainer after reading the published article (decision O25).
+# Entered by the project maintainer after reading the published article.
 # Source: McLean and Pontiff (2016), Journal of Finance 71(1), Table I ("Mean portfolio return
 # in-sample 0.582") and Table II column (1). Table II standard errors are FGLS estimates that allow
 # contemporaneous cross-correlation of portfolio residuals, not clustered standard errors.

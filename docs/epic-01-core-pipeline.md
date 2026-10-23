@@ -6,12 +6,12 @@ Turn the Epic 00 stubs into the working pipeline: cached canonical data → pred
 window-classified panel → pre-registered panel regressions → descriptive results → deterministic
 figures → an executable Quarto report, plus an offline end-to-end gate that runs every stage on the
 committed fixture and checks its outputs against independent expectations. Full-data estimation
-remains behind the `specs-frozen` tag (decision O26); the fixture is the only place estimates run
+remains behind the `specs-frozen` tag; the fixture is the only place estimates run
 during development.
 
 ## How it works
 
-- **Data layer.** `anomaly_decay.data.fetch` is cache-aware (carryover R1): it reads
+- **Data layer.** `anomaly_decay.data.fetch` is cache-aware: it reads
   `data/manifest.lock` first, skips files whose size and SHA-256 already match, and fails loudly —
   leaving the manifest byte-identical and keeping the download as `<name>.rejected` — when a new
   download disagrees with an existing entry. Entries change only under `--update-manifest`; a file
@@ -69,7 +69,7 @@ during development.
   `config/original_paper.yaml` loader. The report has the nine required sections plus a
   specification appendix; every prose number is an inline expression, missing results render
   pending callouts, missing figures render warning callouts, and the paper's coefficients show
-  "pending verification" until entered from the paper (decision O25). The PDF embeds figures
+  "pending verification" until entered from the paper. The PDF embeds figures
   through the Jupyter image machinery, which avoids output-directory path rewrites in Typst.
 - **Build and CI.** `Makefile` variables at the top drive the stage targets `metadata`, `panel`,
   `estimate`, `descriptive`, `figures`, `report`; `reproduce` chains them after `fetch`.
@@ -77,7 +77,7 @@ during development.
   from the committed fictional results fixture for report development; `report-placeholder`
   renders it with only the dummy `main.csv` to exercise the pending paths. CI keeps the four job
   IDs `lint`, `types`, `tests`, `reproduce-fixture`; the `tests` job checks out with
-  `fetch-depth: 0` so the pre-registration freeze test can see tags (carryover R4).
+  `fetch-depth: 0` so the pre-registration freeze test can see tags.
 
 ### The offline end-to-end gate
 
@@ -178,7 +178,7 @@ fixture headline on the current real fixture is post-sample −57.4% (SE 21.2) a
 
 ## Deviations from the plan
 
-- **Fixture results go to `data/processed/fixture/` instead of `results/`** (decision O22). The
+- **Fixture results go to `data/processed/fixture/` instead of `results/`.** The
   PRD's literal `results/main.csv` would make an offline fixture run indistinguishable from a
   real one; the gate therefore writes under the gitignored processed directory and compares
   against committed expectations.
@@ -193,12 +193,12 @@ fixture headline on the current real fixture is post-sample −57.4% (SE 21.2) a
   the expected file on `osap-202510` and the gate has failed loudly on any fixture change since
   (which is the intended behaviour).
 - **A documented historical exception: OSAP dates are last trading days, including Saturdays
-  before mid-1952.** The wave-01 note "last trading day of the month" is correct for weekdays; the
-  real-data invariant suite records the Saturday exception explicitly rather than excluding real
-  sessions.
-- **`docs/epic-00-foundation.md` still describes the synthetic fixture** (the file is frozen this
-  wave). It should be corrected in the next documentation update; this document is the current
-  description of the fixture.
+  before mid-1952.** The original design note "last trading day of the month" is correct for
+  weekdays; the real-data invariant suite records the Saturday exception explicitly rather than
+  excluding real sessions.
+- **`docs/epic-00-foundation.md` describes the synthetic fixture it was written with.** Its
+  closing correction records the real-fixture rebuild; this document is the current description of
+  the fixture.
 - **`main_twoway` can produce NaN standard errors on degenerate panels.** The two-way covariance
   can be non-positive-semidefinite on small deterministic test panels; this is the estimator's
   output, documented rather than worked around, and it does not occur on the real fixture.
@@ -206,7 +206,7 @@ fixture headline on the current real fixture is post-sample −57.4% (SE 21.2) a
 ## Known limitations and deferred items
 
 - **No full-data results exist yet.** All estimation in this epic ran on the fixture or hand-built
-  panels; the first full run happens after the orchestrator creates `specs-frozen`, and the report
+  panels; the first full run happens after `specs-frozen` is created, and the report
   marks every full-data-dependent statement as pending until then.
 - **The report's comparison numbers are unverified.** `config/original_paper.yaml` carries the
   citation and null values with `status: pending-verification`; the report shows "pending

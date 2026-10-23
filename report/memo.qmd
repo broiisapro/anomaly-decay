@@ -1,6 +1,398 @@
 ---
-title: "RA memo"
-format: typst
+title: "Anomaly returns after the sample ends and after publication"
+subtitle: "Research-assistant memo on a replication of McLean and Pontiff"
+author: "Moksh Siruvani"
+date: today
+format:
+  typst:
+    papersize: us-letter
+    fontsize: 10pt
+    margin:
+      x: 0.7in
+      y: 0.6in
 ---
 
-The two-page RA memo arrives in this release.
+```{python}
+#| echo: false
+#| output: false
+import math
+import os
+import sys
+from pathlib import Path
+
+import polars as pl
+from IPython.display import Markdown
+
+# The kernel runs in report/, so put the repository root on sys.path and let
+# anomaly_decay.reporting resolve every path itself.
+_project_dir = Path(os.environ.get("QUARTO_PROJECT_DIR", Path.cwd())).resolve()
+_repo_root = _project_dir.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
+from anomaly_decay import reporting
+
+PAPER = reporting.original_paper()
+PAPER_CITATION = PAPER.get("citation", {})
+PAPER_TABLE = PAPER.get("table2_col1", {})
+PAPER_TABLE1 = PAPER.get("table1", {})
+PAPER_TABLE4 = PAPER.get("table2_col4", {})
+PAPER_HEADLINE = PAPER.get("headline", {})
+PAPER_MEAN = PAPER_TABLE1.get("in_sample_mean_pct")
+
+main = reporting.load_optional("main.csv")
+decay = reporting.load_optional("decay.csv")
+coverage = reporting.load_optional("coverage.csv")
+robustness = reporting.load_optional("robustness.csv")
+bootstrap = reporting.load_optional("bootstrap.csv")
+multiple_testing = reporting.load_optional("multiple_testing.csv")
+vintages = reporting.load_optional("vintage_comparison.csv")
+
+
+def complete(*values: object) -> bool:
+    return all(
+        value is not None and not (isinstance(value, float) and math.isnan(value))
+        for value in values
+    )
+
+
+def lookup(frame: pl.DataFrame | None, column: str, **conditions: object) -> object:
+    if frame is None:
+        return None
+    return reporting.lookup(frame, column, **conditions)
+
+
+def main_value(term: str, column: str) -> object:
+    return lookup(main, column, term=term)
+
+
+def decay_value(method: str, term: str, column: str) -> object:
+    return lookup(decay, column, method=method, term=term)
+
+
+def paper_term(term: str, field: str) -> object:
+    entry = PAPER_TABLE.get(term, {})
+    return entry.get(field) if isinstance(entry, dict) else None
+
+
+def paper_decline_pct(term: str) -> float | None:
+    return reporting.ratio_pct(paper_term(term, "coef"), PAPER_MEAN)
+
+
+def coverage_value(item: str) -> object:
+    value = lookup(coverage, "value", item=item)
+    return reporting.NA_TEXT if value is None else value
+
+
+def coverage_count(item: str) -> str:
+    """Coverage counts are stored as text, so convert before formatting."""
+    try:
+        return reporting.count(int(coverage_value(item)))
+    except (TypeError, ValueError):
+        return reporting.NA_TEXT
+
+
+def pair_cell(coef: object, se: object) -> str:
+    if not complete(coef, se):
+        return reporting.NA_TEXT
+    return f"{reporting.num(coef, 3)} ({reporting.num(se, 3)})"
+
+
+def boot_value(statistic: str, column: str) -> object:
+    return lookup(bootstrap, column, statistic=statistic)
+
+
+def boot_interval(statistic: str) -> str:
+    low = boot_value(statistic, "ci_low")
+    high = boot_value(statistic, "ci_high")
+    if not complete(low, high):
+        return reporting.NA_TEXT
+    return f"{reporting.num(low, 1)} to {reporting.num(high, 1)}"
+
+
+def coef_range(frame: pl.DataFrame | None, term: str) -> str:
+    if frame is None:
+        return reporting.NA_TEXT
+    rows = frame.filter((pl.col("term") == term) & (pl.col("spec") != "main"))
+    if rows.height == 0:
+        return reporting.NA_TEXT
+    return f"{reporting.num(rows['coef'].min(), 3)} to {reporting.num(rows['coef'].max(), 3)}"
+
+
+def all_negative(frame: pl.DataFrame | None) -> bool:
+    if frame is None:
+        return False
+    rows = frame.filter(pl.col("spec") != "main")
+    return rows.height > 0 and bool((rows["coef"] < 0).all())
+
+
+def mt_value(spec: str, term: str, column: str) -> object:
+    return lookup(multiple_testing, column, spec=spec, term=term)
+
+
+def paper_table4(term: str, field: str) -> object:
+    entry = PAPER_TABLE4.get(term, {})
+    return entry.get(field) if isinstance(entry, dict) else None
+
+
+PRIMARY_VINTAGE = str(coverage_value("vintage"))
+N_ROBUSTNESS = (
+    robustness.filter(pl.col("spec") != "main")["spec"].n_unique()
+    if robustness is not None
+    else 0
+)
+ROBUST_SIGN_TEXT = (
+    "every row is negative, so the sign and rough size of the main estimate survive every variant"
+    if all_negative(robustness)
+    else "the rows differ in sign, so the range spans estimates of both signs"
+)
+POST_SAMPLE_INTERVAL = boot_interval("decay_pct_post_sample")
+POST_PUBLICATION_INTERVAL = boot_interval("decay_pct_post_publication")
+BOOTSTRAP_BELOW_ZERO = all(
+    complete(low, high) and low < 0 and high < 0
+    for low, high in (
+        (
+            boot_value("decay_pct_post_sample", "ci_low"),
+            boot_value("decay_pct_post_sample", "ci_high"),
+        ),
+        (
+            boot_value("decay_pct_post_publication", "ci_low"),
+            boot_value("decay_pct_post_publication", "ci_high"),
+        ),
+    )
+)
+INTERVAL_TEXT = (
+    "neither interval includes zero"
+    if BOOTSTRAP_BELOW_ZERO
+    else "the intervals are read as computed"
+)
+COMPARISON_VINTAGES = (
+    sorted({int(value) for value in vintages["vintage"].to_list()} - {int(PRIMARY_VINTAGE)})
+    if vintages is not None
+    else []
+)
+```
+
+[Report](https://broiisapro.github.io/anomaly-decay/) · [Repository](https://github.com/broiisapro/anomaly-decay)
+
+# Question
+
+Do long-short anomaly returns fall after the original sample period ends, and fall further after
+the research is published? McLean and Pontiff (`{python} PAPER_CITATION.get("year")`) report both
+declines for a hand-collected set of published predictors and read the second fall as evidence that
+academic research erodes predictability. This memo summarizes a replication that rebuilds each
+predictor's long-short series from its original recipe on open OSAP data. The full report carries
+the tables, figures and design deviations behind every number here.
+
+# Data
+
+The replication uses Chen–Zimmermann OSAP release `{python} coverage_value('vintage')`, with
+`{python} coverage_count('n_predictors_op')` predictors that have original-paper
+long-short returns, of which `{python} coverage_count('n_published_by_2013')` are
+published by the main sample's cutoff. Monthly returns run from
+`{python} reporting.month_label(coverage_value('first_month'))` through
+`{python} reporting.month_label(coverage_value('last_month'))`, are percent per month, and are gross
+of trading costs. The main specification pools predictors and regresses the monthly long-short
+return on post-sample and post-publication indicators with predictor fixed effects, clustering
+standard errors by month; the extension runs the same specification through the vintage's last
+month. Decay is measured both as each coefficient divided by the pooled in-sample mean and as a
+regression on returns normalized by each predictor's own in-sample mean.
+
+# Result
+
+```{python}
+#| echo: false
+#| tbl-colwidths: [44, 30, 26]
+result_rows = pl.DataFrame(
+    {
+        "quantity": [
+            "Post-sample coefficient (SE)",
+            "Post-publication coefficient (SE)",
+            "Pooled-ratio decline, post-sample",
+            "Pooled-ratio decline, post-publication",
+            "Normalized decline, post-sample",
+            "Normalized decline, post-publication",
+            "Bootstrap interval, post-sample decline",
+            "Bootstrap interval, post-publication decline",
+            "Predictors in the estimation sample",
+            "Observations in the estimation sample",
+        ],
+        "replication": [
+            pair_cell(main_value("post_sample", "coef"), main_value("post_sample", "se")),
+            pair_cell(
+                main_value("post_publication", "coef"), main_value("post_publication", "se")
+            ),
+            reporting.pct(decay_value("pooled_ratio", "post_sample", "decay_pct")),
+            reporting.pct(decay_value("pooled_ratio", "post_publication", "decay_pct")),
+            reporting.pct(decay_value("normalized", "post_sample", "decay_pct")),
+            reporting.pct(decay_value("normalized", "post_publication", "decay_pct")),
+            POST_SAMPLE_INTERVAL,
+            POST_PUBLICATION_INTERVAL,
+            reporting.count(main_value("post_sample", "n_predictors")),
+            reporting.count(main_value("post_sample", "n_obs")),
+        ],
+        "paper": [
+            pair_cell(paper_term("post_sample", "coef"), paper_term("post_sample", "se")),
+            pair_cell(
+                paper_term("post_publication", "coef"), paper_term("post_publication", "se")
+            ),
+            reporting.pct(paper_decline_pct("post_sample")),
+            reporting.pct(paper_decline_pct("post_publication")),
+            "not in this column",
+            "not in this column",
+            "not in this column",
+            "not in this column",
+            reporting.count(PAPER_TABLE.get("n_predictors")),
+            reporting.count(PAPER_TABLE.get("n_obs")),
+        ],
+    }
+)
+
+result_table = Markdown(
+    reporting.table(
+        result_rows,
+        ["quantity", "replication", "paper"],
+        ["Quantity", "This replication", "McLean & Pontiff, Table II, first column"],
+    )
+)
+result_table
+```
+
+```{python}
+#| echo: false
+result_sentences = [
+    "The main specification lands close to the paper on both scales. Post-sample returns are "
+    f"{reporting.direction(main_value('post_sample', 'coef'))} by "
+    f"{reporting.num(reporting.magnitude(main_value('post_sample', 'coef')), 3)} percent per month "
+    f"(SE {reporting.num(main_value('post_sample', 'se'), 3)}) and post-publication returns by "
+    f"{reporting.num(reporting.magnitude(main_value('post_publication', 'coef')), 3)} percent per "
+    f"month (SE {reporting.num(main_value('post_publication', 'se'), 3)}). Divided by the pooled "
+    f"in-sample mean of {reporting.num(decay_value('pooled_ratio', 'post_sample', 'in_sample_mean'), 3)} "
+    "percent per month, those are declines of "
+    f"{reporting.pct(decay_value('pooled_ratio', 'post_sample', 'decay_pct'))} and "
+    f"{reporting.pct(decay_value('pooled_ratio', 'post_publication', 'decay_pct'))}, against the "
+    f"paper's {reporting.pct(paper_decline_pct('post_sample'))} and "
+    f"{reporting.pct(paper_decline_pct('post_publication'))} and its headline "
+    f"{reporting.pct(PAPER_HEADLINE.get('post_sample_decline_pct'), 0)} and "
+    f"{reporting.pct(PAPER_HEADLINE.get('post_publication_decline_pct'), 0)}; the gaps are "
+    f"{reporting.pp_gap(decay_value('pooled_ratio', 'post_sample', 'decay_pct'), paper_decline_pct('post_sample'))} "
+    f"and {reporting.pp_gap(decay_value('pooled_ratio', 'post_publication', 'decay_pct'), paper_decline_pct('post_publication'))}. "
+    "Normalizing each "
+    "predictor by its own in-sample mean gives declines of "
+    f"{reporting.pct(decay_value('normalized', 'post_sample', 'decay_pct'))} and "
+    f"{reporting.pct(decay_value('normalized', 'post_publication', 'decay_pct'))}."
+]
+if bootstrap is not None:
+    result_sentences.append(
+        " The pre-registered moving-block bootstrap puts a percentile interval of "
+        f"{POST_SAMPLE_INTERVAL} percent on the post-sample decline and "
+        f"{POST_PUBLICATION_INTERVAL} percent on the post-publication decline; "
+        f"{INTERVAL_TEXT}. "
+    )
+result_sentences.append(
+    "The two exercises share the measured object — the shift in long-short returns after the "
+    "sample ends and after publication — but not their inputs: the paper hand-collects returns "
+    "for its own predictors, while this replication rebuilds them from OSAP."
+)
+result_text = (
+    Markdown(" ".join(sentence.strip() for sentence in result_sentences))
+    if main is not None and decay is not None
+    else Markdown(
+        "The main estimates render here when `main.csv` and `decay.csv` are present in the "
+        "results directory."
+    )
+)
+result_text
+```
+
+# Robustness and Phase 2
+
+```{python}
+#| echo: false
+robustness_sentences = (
+    [
+        f"Across the {N_ROBUSTNESS} pre-registered robustness rows, the post-sample coefficient "
+        f"ranges from {coef_range(robustness, 'post_sample')} percent per month and the "
+        f"post-publication coefficient from {coef_range(robustness, 'post_publication')}; "
+        f"{ROBUST_SIGN_TEXT}. "
+    ]
+    if robustness is not None
+    else ["The pre-registered robustness rows render here when their results file is present. "]
+)
+if vintages is not None and COMPARISON_VINTAGES:
+    comparison = COMPARISON_VINTAGES[0]
+    primary_decay = lookup(
+        vintages, "decay_pct", spec="main", vintage=int(PRIMARY_VINTAGE), term="post_publication"
+    )
+    comparison_decay = lookup(
+        vintages, "decay_pct", spec="main", vintage=int(comparison), term="post_publication"
+    )
+    primary_sample = lookup(
+        vintages, "decay_pct", spec="main", vintage=int(PRIMARY_VINTAGE), term="post_sample"
+    )
+    comparison_sample = lookup(
+        vintages, "decay_pct", spec="main", vintage=int(comparison), term="post_sample"
+    )
+    robustness_sentences.append(
+        f"Re-estimating the main specification on the earlier {comparison} release moves the "
+        f"post-publication decline to {reporting.pct(comparison_decay)} from "
+        f"{reporting.pct(primary_decay)} and the post-sample decline to "
+        f"{reporting.pct(comparison_sample)} from {reporting.pct(primary_sample)}. "
+    )
+if multiple_testing is not None:
+    continuous = mt_value("mt_tstat_continuous", "post_publication_x_tstat", "coef")
+    continuous_t = mt_value("mt_tstat_continuous", "post_publication_x_tstat", "t")
+    paper_continuous = paper_table4("post_publication_x_tstat", "coef")
+    paper_continuous_se = paper_table4("post_publication_x_tstat", "se")
+    signs = (
+        "agree"
+        if complete(continuous, paper_continuous)
+        and (continuous < 0) == (paper_continuous < 0)
+        else "differ"
+    )
+    robustness_sentences.append(
+        "The continuous interaction that mirrors the paper's Table II, fourth column (each "
+        "window dummy interacted with the predictor's in-sample t-statistic) is "
+        f"{reporting.num(continuous, 3)} (t = {reporting.tstat(continuous_t)}) for the "
+        f"post-publication window, against the paper's {reporting.num(paper_continuous, 3)} "
+        f"(SE {reporting.num(paper_continuous_se, 3)}); the signs {signs}."
+    )
+robustness_text = Markdown(" ".join(sentence.strip() for sentence in robustness_sentences))
+robustness_text
+```
+
+# Caveats
+
+- **Publication timing.** OSAP records a publication year, not a journal month, so the default
+  post-publication window starts the following January; the alternative convention is a robustness
+  row.
+- **Predictor universe.** OSAP rebuilds each predictor from its original paper rather than using the
+  authors' own return series, so the predictor count here
+  (`{python} coverage_count('n_predictors_op')`) differs from the paper's
+  (`{python} reporting.count(PAPER_TABLE.get('n_predictors'))`).
+- **Standard errors.** The estimates cluster by month in a panel with predictor fixed effects; the
+  paper uses FGLS with a contemporaneous cross-sectional correlation correction.
+- **Gross returns.** Long-short returns are before trading costs, so the memo says nothing about
+  net-of-cost profitability.
+- **No causal claim.** The window coefficients describe shifts in average returns; predictors can
+  weaken for reasons unrelated to publication.
+- **One dataset, one vintage.** Every number is conditional on the pinned OSAP release, which is
+  revised; the vintage comparison measures how much one earlier release moves the estimates.
+
+# Next steps
+
+- **Rebuild a few predictors from source data.** Repeating the exercise for a handful of predictors
+  on WRDS (CRSP and Compustat inputs) would separate OSAP reconstruction differences from genuine
+  decay.
+- **Adjust for trading costs.** Adding spreads and commissions to the long-short series would show
+  whether the post-publication decline survives net of the costs a trader would pay.
+- **Extend beyond the United States.** Repeating the design on non-US markets, where publication
+  timing and investor clienteles differ, would test whether the post-publication fall tracks the
+  research or the market.
+
+```{=typst}
+#context assert(
+  counter(page).final().first() <= 2,
+  message: "the memo exceeds its two-page budget",
+)
+```

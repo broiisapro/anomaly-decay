@@ -17,8 +17,8 @@ after the self-hosted runner had been removed.
 `<!-- results:end -->` in `README.md`. It reads `main.csv`, `decay.csv`, `coverage.csv` and
 `bootstrap.csv` through `anomaly_decay.io.read_results` and the paper's reference values from
 `config/original_paper.yaml`, and formats every value with the report's own helpers from
-`anomaly_decay.reporting`. `python -m anomaly_decay.readme` rewrites the block;
-`--check` fails when the block is stale.
+`anomaly_decay.reporting`. `make readme` (or `python -m anomaly_decay.readme`) rewrites the
+block; `--check` fails when the block is stale.
 
 `--check` also fails when a number has been typed anywhere else in the README. Code spans and
 fenced blocks are ignored and four-digit years are allowed, so commands and versions live in code
@@ -74,7 +74,9 @@ the panel exactly and rendered both report formats on Linux.
 
 1. check out the released tag;
 2. install uv `0.11.26` and Quarto `1.10.19`;
-3. `uv sync --frozen`, then `make report` from the committed `results/`;
+3. `uv sync --frozen`, then `make report` from the committed `results/` (the site work that
+   followed the release extended this step to `make site`, which runs the same render and then
+   writes the companion page's per-predictor data files);
 4. upload `report/_site` with `actions/upload-pages-artifact`.
 
 The deploy job publishes the artifact with `actions/deploy-pages` under the `github-pages`
@@ -150,12 +152,13 @@ The go-public step ran in this order:
 
 - **Publishing.** An annotated `vX.Y.Z` tag with a published GitHub release deploys the site; a
   manual dispatch of the `pages` workflow redeploys from the selected ref. The build contract is
-  `make report`, which must keep writing `report/_site/index.html` and `report/_site/index.pdf`.
+  `make site`, which runs `make report` and must keep writing `report/_site/index.html` and
+  `report/_site/index.pdf`.
 - **Release contents.** Twelve result CSVs plus the report PDF. The website and the release must
   come from the same committed `results/`.
-- **README block.** `python -m anomaly_decay.readme` writes it and `--check` verifies it. Changes to
-  its content go through `anomaly_decay/readme.py` and its tests, never through a direct edit of
-  the block.
+- **README block.** `make readme` (wrapping `python -m anomaly_decay.readme`) writes it and
+  `--check` verifies it. Changes to its content go through `anomaly_decay/readme.py` and its
+  tests, never through a direct edit of the block.
 - **Required checks.** The names `lint`, `types`, `tests` and `reproduce-fixture` are fixed by the
   `main` ruleset; new checks would be added, not substituted.
 - **Repository environment.** The `github-pages` environment accepts deployments from `main` and
@@ -175,16 +178,15 @@ The go-public step ran in this order:
 - **The first Pages deployment needed a repository setting.** The environment's default
   branch-only policy rejected a deployment from the release tag; the `v*` tag policy was added and
   the deployment re-run. The fix is configuration, so it cannot be reviewed in a pull request.
-- **`make readme` does not exist.** The Makefile was outside #100's file set, so the target was
-  requested in the pull request body and the README documents
-  `uv run python -m anomaly_decay.readme` instead. The block and its check are unaffected.
+- **`make readme` arrived after the README work.** The Makefile was outside #100's file set, so
+  the target was requested in that pull request and the README documented
+  `uv run python -m anomaly_decay.readme` in the meantime. The target now exists (added with the
+  site work) and runs the same command; the block and its check are unaffected.
 - **Secret scanning is a pre-publication check, not a CI job.** It ran once over the repository
   before the visibility change; no workflow runs it on later commits.
 
 ## Known limitations and deferred items
 
-- **`make readme` is still missing.** The two-line target is deferred to whoever next owns the
-  `Makefile`; the direct module command documented in the README behaves identically.
 - **`dist/` is not ignored.** A one-off `uv build` leaves an untracked `dist/` directory; no build
   output is committed and `uv build` is not part of any target, so `.gitignore` was left unchanged.
 - **Secret scanning is not automated.** A later commit could introduce a credential without a CI

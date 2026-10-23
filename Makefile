@@ -75,6 +75,8 @@ estimate:
 descriptive:
 	uv run python -m anomaly_decay.estimate.descriptive --panel $(PANEL) \
 		--metadata $(METADATA) --vintage $(VINTAGE) --results-dir $(RESULTS_DIR)
+	uv run python -m anomaly_decay.estimate.predictor_profiles --panel $(PANEL) \
+		--metadata $(METADATA) --results-dir $(RESULTS_DIR)
 
 figures:
 	uv run python -m anomaly_decay.figures.event_time --results-dir $(RESULTS_DIR)

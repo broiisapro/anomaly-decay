@@ -28,6 +28,11 @@ RESULTS_SORT_KEY_ORDERS: dict[str, list[list[object]]] = {
     "multiple_testing.csv": [["b_spec", "pb"], ["a_spec", "ps"]],
     "tstat_summary.csv": [["z_source"], ["a_source"]],
     "vintage_comparison.csv": [["b_spec", 202410, "pb"], ["a_spec", 202510, "ps"]],
+    "predictor_info.csv": [["b_signal"], ["a_signal"]],
+    "predictor_event_time.csv": [
+        ["b_signal", "publication", 1999],
+        ["a_signal", "sample_end", 2000],
+    ],
 }
 
 

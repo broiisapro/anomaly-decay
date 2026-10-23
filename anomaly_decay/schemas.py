@@ -165,6 +165,23 @@ RESULTS_SCHEMAS: dict[str, dict[str, DataTypeClass]] = {
         "n_obs": pl.Int64,
         "predictor_set": pl.Utf8,
     },
+    "predictor_info.csv": {
+        "signalname": pl.Utf8,
+        "authors": pl.Utf8,
+        "journal": pl.Utf8,
+        "pub_year": pl.Int64,
+        "sample_start_year": pl.Int64,
+        "sample_end_year": pl.Int64,
+        "clear": pl.Boolean,
+        "cat_economic": pl.Utf8,
+    },
+    "predictor_event_time.csv": {
+        "signalname": pl.Utf8,
+        "anchor": pl.Utf8,
+        "event_year": pl.Int64,
+        "mean_ret": pl.Float64,
+        "n_months": pl.Int64,
+    },
 }
 
 

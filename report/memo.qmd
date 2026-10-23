@@ -79,6 +79,12 @@ def paper_decline_pct(term: str) -> float | None:
     return reporting.ratio_pct(paper_term(term, "coef"), PAPER_MEAN)
 
 
+def same_sign(left: object, right: object) -> bool:
+    """Whether both values exist and point the same way (through reporting.direction)."""
+    left_word = reporting.direction(left)
+    return left_word != reporting.NA_TEXT and left_word == reporting.direction(right)
+
+
 def coverage_value(item: str) -> object:
     value = lookup(coverage, "value", item=item)
     return reporting.NA_TEXT if value is None else value
@@ -171,6 +177,14 @@ COMPARISON_VINTAGES = (
     if vintages is not None
     else []
 )
+WINDOW_SIGNS_TEXT = (
+    "Both window coefficients carry the paper's sign."
+    if same_sign(main_value("post_sample", "coef"), paper_term("post_sample", "coef"))
+    and same_sign(
+        main_value("post_publication", "coef"), paper_term("post_publication", "coef")
+    )
+    else "The two window coefficients do not both carry the paper's sign."
+)
 ```
 
 [Report](https://broiisapro.github.io/anomaly-decay/) · [Repository](https://github.com/broiisapro/anomaly-decay)
@@ -261,7 +275,7 @@ result_table
 ```{python}
 #| echo: false
 result_sentences = [
-    "The main specification lands close to the paper on both scales. Post-sample returns are "
+    f"{WINDOW_SIGNS_TEXT} Post-sample returns are "
     f"{reporting.direction(main_value('post_sample', 'coef'))} by "
     f"{reporting.num(reporting.magnitude(main_value('post_sample', 'coef')), 3)} percent per month "
     f"(SE {reporting.num(main_value('post_sample', 'se'), 3)}) and post-publication returns by "
@@ -274,7 +288,11 @@ result_sentences = [
     f"paper's {reporting.pct(paper_decline_pct('post_sample'))} and "
     f"{reporting.pct(paper_decline_pct('post_publication'))} and its headline "
     f"{reporting.pct(PAPER_HEADLINE.get('post_sample_decline_pct'), 0)} and "
-    f"{reporting.pct(PAPER_HEADLINE.get('post_publication_decline_pct'), 0)}; the gaps are "
+    f"{reporting.pct(PAPER_HEADLINE.get('post_publication_decline_pct'), 0)}. The post-sample "
+    f"decline is {reporting.decline_word(decay_value('pooled_ratio', 'post_sample', 'decay_pct'), paper_decline_pct('post_sample'))} "
+    "than the paper's and the post-publication decline is "
+    f"{reporting.decline_word(decay_value('pooled_ratio', 'post_publication', 'decay_pct'), paper_decline_pct('post_publication'))} "
+    "than the paper's, with gaps of "
     f"{reporting.pp_gap(decay_value('pooled_ratio', 'post_sample', 'decay_pct'), paper_decline_pct('post_sample'))} "
     f"and {reporting.pp_gap(decay_value('pooled_ratio', 'post_publication', 'decay_pct'), paper_decline_pct('post_publication'))}. "
     "Normalizing each "
@@ -367,9 +385,11 @@ robustness_text
   post-publication window starts the following January; the alternative convention is a robustness
   row.
 - **Predictor universe.** OSAP rebuilds each predictor from its original paper rather than using the
-  authors' own return series, so the predictor count here
-  (`{python} coverage_count('n_predictors_op')`) differs from the paper's
-  (`{python} reporting.count(PAPER_TABLE.get('n_predictors'))`).
+  authors' own return series. The main estimation sample holds
+  `{python} reporting.count(main_value('post_sample', 'n_predictors'))` predictors against the
+  paper's `{python} reporting.count(PAPER_TABLE.get('n_predictors'))`; the release as a whole
+  carries `{python} coverage_count('n_predictors_op')` predictors with original-paper returns, and
+  the main sample keeps those published by its cutoff.
 - **Standard errors.** The estimates cluster by month in a panel with predictor fixed effects; the
   paper uses FGLS with a contemporaneous cross-sectional correlation correction.
 - **Gross returns.** Long-short returns are before trading costs, so the memo says nothing about

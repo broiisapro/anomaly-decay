@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 import polars as pl
 import yaml
 
+from anomaly_decay import io as results_io
 from anomaly_decay.schemas import RESULTS_SCHEMAS
 
 if TYPE_CHECKING:
@@ -154,31 +155,18 @@ def results_dir() -> Path:
     return path
 
 
-def _io_read_results() -> Callable[[str, Path], pl.DataFrame] | None:
-    """``anomaly_decay.io.read_results`` when that module provides it, else ``None``."""
-    from anomaly_decay import io
-
-    reader = getattr(io, "read_results", None)
-    if callable(reader):
-        return cast("Callable[[str, Path], pl.DataFrame]", reader)
-    return None
-
-
 def load(name: str, *, where: Path | None = None) -> pl.DataFrame:
     """Read one results file with its schema dtypes.
 
     *name* must be a key of :data:`anomaly_decay.schemas.RESULTS_SCHEMAS` (e.g.
-    ``"main.csv"``). Uses ``anomaly_decay.io.read_results`` when available and otherwise
-    a schema-typed :func:`polars.read_csv` (until issue #21 lands). Missing files raise
-    :class:`FileNotFoundError`.
+    ``"main.csv"``). The file is read through
+    :func:`anomaly_decay.io.read_results`, the same schema-typed reader every other stage
+    uses. Missing files raise :class:`FileNotFoundError`.
     """
     if name not in RESULTS_SCHEMAS:
         raise ValueError(f"unknown results file: {name!r}")
     base = where if where is not None else results_dir()
-    reader = _io_read_results()
-    if reader is not None:
-        return reader(name, base)
-    return pl.read_csv(base / name, schema=RESULTS_SCHEMAS[name])
+    return results_io.read_results(name, base)
 
 
 def load_optional(name: str, *, where: Path | None = None) -> pl.DataFrame | None:

@@ -2,8 +2,8 @@
 
 The helpers decide where results live and how numbers are formatted, so the tests pin the
 repository-root path resolution (never the process working directory), the schema-typed
-read (with and without ``anomaly_decay.io.read_results``), the pending-value rules, the
-table builders on the committed results fixture, and the structure of ``report/index.qmd``.
+read through ``anomaly_decay.io.read_results``, the pending-value rules, the table builders
+on the committed results fixture, and the structure of ``report/index.qmd``.
 """
 
 from __future__ import annotations
@@ -150,34 +150,17 @@ def test_load_missing_file_raises(tmp_path: Path) -> None:
         reporting.load("main.csv", where=tmp_path)
 
 
-def test_load_falls_back_to_schema_read_without_io_reader(
+def test_load_reads_through_io_read_results(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _write_main(tmp_path)
-    monkeypatch.delattr(io_module, "read_results", raising=False)
-    frame = reporting.load("main.csv", where=tmp_path)
-    assert frame.schema == {
-        "spec": pl.Utf8,
-        "term": pl.Utf8,
-        "coef": pl.Float64,
-        "se": pl.Float64,
-        "t": pl.Float64,
-        "n_predictors": pl.Int64,
-        "n_obs": pl.Int64,
-    }
-    assert frame.height == 2
-
-
-def test_load_prefers_io_read_results_when_available(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+    """The report has one results reader; a bypass of ``io.read_results`` would be a bug."""
     calls: list[tuple[str, Path]] = []
 
     def fake_reader(name: str, base: Path) -> pl.DataFrame:
         calls.append((name, base))
         return pl.DataFrame({"spec": ["main"]}, schema={"spec": pl.Utf8})
 
-    monkeypatch.setattr(io_module, "read_results", fake_reader, raising=False)
+    monkeypatch.setattr(io_module, "read_results", fake_reader)
     frame = reporting.load("main.csv", where=tmp_path)
     assert calls == [("main.csv", tmp_path)]
     assert frame.columns == ["spec"]
@@ -765,6 +748,23 @@ def test_report_puts_the_headline_result_first() -> None:
     assert "reporting.figure_block(" in section
     assert '"event_time"' in section
     assert '"n_predictors"' in section
+
+
+def test_report_links_the_companion_page_and_memo_relatively() -> None:
+    """The site links must be relative so they resolve on Pages and in a local render."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    assert "# Explore and summary" in text
+    assert "](companion.html)" in text
+    assert "](memo.pdf)" in text
+    assert "broiisapro.github.io/anomaly-decay/companion" not in text
+    assert "broiisapro.github.io/anomaly-decay/memo" not in text
+
+
+def test_report_does_not_force_page_breaks() -> None:
+    """The removed weak page breaks left near-empty pages; the PDF must flow instead."""
+    text = QMD_PATH.read_text(encoding="utf-8")
+    assert "#pagebreak" not in text
+    assert "pagebreak(" not in text
 
 
 @pytest.mark.parametrize("name", FIXTURE_FILES)

@@ -6,10 +6,11 @@ comparison release). Populate them with ``make fetch`` and
 ``uv run python -m anomaly_decay.data.fetch --osap --vintage 202410``.
 
 The test rebuilds the metadata and the panel from the cache, runs the estimate, the
-descriptive and the three Phase 2 CLIs into a temporary results directory, and compares
-every committed ``results/*.csv`` with its fresh copy. On macOS the comparison is byte
-for byte; elsewhere floats are compared at 1e-10 relative/absolute and text exactly,
-because the linear-algebra libraries differ across operating systems (decision O34).
+descriptive, the per-predictor profile and the three Phase 2 CLIs into a temporary
+results directory, and compares every committed ``results/*.csv`` with its fresh copy.
+On macOS the comparison is byte for byte; elsewhere floats are compared at 1e-10
+relative/absolute and text exactly, because the linear-algebra libraries differ across
+operating systems (decision O34).
 
 Subprocesses run with the Makefile's thread environment (OpenMP/BLAS pools pinned to one
 thread). ``POLARS_MAX_THREADS`` is removed from the inherited environment: the committed
@@ -146,6 +147,15 @@ def rebuilt_results(tmp_path_factory: pytest.TempPathFactory) -> Path:
         metadata,
         "--vintage",
         PRIMARY_VINTAGE,
+        "--results-dir",
+        results,
+    )
+    _run(
+        "anomaly_decay.estimate.predictor_profiles",
+        "--panel",
+        panel,
+        "--metadata",
+        metadata,
         "--results-dir",
         results,
     )

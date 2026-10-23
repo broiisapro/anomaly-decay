@@ -1,0 +1,213 @@
+signalname,authors,journal,pub_year,sample_start_year,sample_end_year,clear,cat_economic
+AM,Fama and French,JF,1992,1963,1990,true,valuation
+AOP,Frankel and Lee,JAE,1998,1975,1993,false,other
+AbnormalAccruals,Xie,AR,2001,1971,1992,true,accruals
+Accruals,Sloan,AR,1996,1962,1991,true,accruals
+AccrualsBM,Bartov and Kim,RFQA,2004,1980,1998,true,valuation
+Activism1,Cremers and Nair,JF,2005,1990,2001,true,other
+Activism2,Cremers and Nair,JF,2005,1990,2001,false,ownership
+AdExp,"Chan, Lakonishok and Sougiannis",JF,2001,1975,1996,false,R&D
+AgeIPO,Ritter,JF,1991,1975,1987,false,other
+AnalystRevision,"Hawkins, Chamberlin, Daniel",FAJ,1984,1975,1980,true,earnings forecast
+AnalystValue,Frankel and Lee,JAE,1998,1975,1993,false,valuation
+AnnouncementReturn,"Chan, Jegadeesh and Lakonishok",JF,1996,1977,1992,true,earnings event
+AssetGrowth,"Cooper, Gulen and Schill",JF,2008,1968,2003,true,investment
+BM,Stattman,Other,1980,1962,1976,true,valuation
+BMdec,Fama and French,JF,1992,1963,1990,true,valuation
+BPEBM,"Penman, Richardson and Tuna",JAR,2007,1963,2001,true,leverage
+Beta,Fama and MacBeth,JPE,1973,1929,1968,false,risk
+BetaFP,Frazzini and Pedersen,JFE,2014,1929,2012,false,other
+BetaLiquidityPS,Pastor and Stambaugh,JPE,2003,1968,1999,true,liquidity
+BetaTailRisk,Kelly and Jiang,RFS,2014,1963,2010,true,risk
+BidAskSpread,Amihud and Mendelson,JFE,1986,1961,1980,false,liquidity
+BookLeverage,Fama and French,JF,1992,1963,1990,true,leverage
+BrandInvest,"Belo, Lin and Vitorino",RED,2014,1975,2010,false,investment alt
+CBOperProf,Ball et al.,JFE,2016,1963,2014,true,profitability
+CF,"Lakonishok, Shleifer, Vishny",JF,1994,1968,1990,true,valuation
+CPVolSpread,Bali and Hovakimian,MS,2009,1996,2004,true,optionrisk
+Cash,Palazzo,JFE,2012,1972,2009,true,asset composition
+CashProd,Chandrashekar and Rao,WP,2009,1963,2003,true,profitability alt
+ChAssetTurnover,Soliman,AR,2008,1984,2002,true,sales growth
+ChEQ,Lockwood and Prombutr,JFR,2010,1964,2007,true,investment
+ChForecastAccrual,Barth and Hutton,RAS,2004,1981,1996,true,earnings forecast
+ChInv,Thomas and Zhang,RAS,2002,1970,1997,true,investment alt
+ChInvIA,Abarbanell and Bushee,AR,1998,1974,1988,true,investment growth
+ChNAnalyst,Scherbina,ROF,2008,1982,2005,true,earnings event
+ChNNCOA,Soliman,AR,2008,1984,2002,true,investment alt
+ChNWC,Soliman,AR,2008,1984,2002,true,investment alt
+ChTax,Thomas and Zhang,JAR,2011,1977,2006,true,other
+ChangeInRecommendation,Jegadeesh et al.,JF,2004,1985,1998,true,recommendation
+CitationsRD,"Hirschleifer, Hsu and Li",JFE,2013,1982,2008,true,profitability alt
+CompEquIss,Daniel and Titman,JF,2006,1968,2003,true,external financing
+CompositeDebtIssuance,"Lyandres, Sun and Zhang",RFS,2008,1970,2005,true,external financing
+ConsRecomm,Barber et al.,JF,2001,1985,1997,false,recommendation
+ConvDebt,Valta,JFQA,2016,1985,2012,true,external financing
+CoskewACX,"Ang, Chen and Xing",RFS,2006,1963,2001,true,risk
+Coskewness,Harvey and Siddique,JF,2000,1964,1993,false,risk
+CredRatDG,Dichev and Piotroski,JF,2001,1986,1998,true,other
+CustomerMomentum,Cohen and Frazzini,JF,2008,1980,2004,true,lead lag
+DebtIssuance,Spiess and Affleck-Graves,JFE,1999,1975,1989,false,external financing
+DelBreadth,"Chen, Hong and Stein",JFE,2002,1979,1998,true,ownership
+DelCOA,Richardson et al.,JAE,2005,1962,2001,true,investment alt
+DelCOL,Richardson et al.,JAE,2005,1962,2001,true,external financing
+DelDRC,Prakash and Sinha,CAR,2013,2002,2007,false,investment alt
+DelEqu,Richardson et al.,JAE,2005,1963,2001,true,investment
+DelFINL,Richardson et al.,JAE,2005,1962,2001,true,external financing
+DelLTI,Richardson et al.,JAE,2005,1962,2001,true,investment
+DelNetFin,Richardson et al.,JAE,2005,1962,2001,true,investment alt
+DivInit,"Michaely, Thaler and Womack",JF,1995,1964,1988,true,payout indicator
+DivOmit,"Michaely, Thaler and Womack",JF,1995,1964,1988,true,payout indicator
+DivSeason,Hartzmark and Salomon,JFE,2013,1927,2011,true,payout indicator
+DivYieldST,Litzenberger and Ramaswamy,JFE,1979,1936,1977,true,valuation
+DolVol,"Brennan, Chordia, Subra",JFE,1998,1966,1995,true,volume
+DownRecomm,Barber et al.,JF,2001,1985,1997,false,earnings forecast
+EBM,"Penman, Richardson and Tuna",JAR,2007,1963,2001,true,valuation
+EP,Basu,JF,1977,1957,1971,true,valuation
+EarnSupBig,Hou,RFS,2007,1972,2001,true,lead lag
+EarningsConsistency,Alwathainani,BAR,2009,1971,2002,true,earnings growth
+EarningsForecastDisparity,Da and Warachka,JFE,2011,1983,2006,true,earnings forecast
+EarningsStreak,Loh and Warachka,MS,2012,1987,2009,true,earnings growth
+EarningsSurprise,"Foster, Olsen and Shevlin",AR,1984,1974,1981,true,earnings growth
+EntMult,Loughran and Wellman,JFQA,2011,1963,2009,true,valuation
+EquityDuration,"Dechow, Sloan and Soliman",RAS,2004,1962,1998,true,valuation
+ExchSwitch,Dharan and Ikenberry,JF,1995,1962,1990,true,other
+ExclExp,"Doyle, Lundholm and Soliman",RAS,2003,1988,1999,true,composite accounting
+FEPS,"Cen, Wei, and Zhang",WP,2006,1983,2002,true,profitability
+FR,Franzoni and Marin,JF,2006,1980,2002,false,composite accounting
+FirmAge,Barry and Brown,JFE,1984,1931,1980,false,info proxy
+FirmAgeMom,Zhang,JF,2006,1983,2001,true,momentum
+ForecastDispersion,"Diether, Malloy and Scherbina",JF,2002,1976,2000,true,volatility
+Frontier,Nguyen and Swanson,JFQA,2009,1980,2003,true,valuation
+GP,Novy-Marx,JFE,2013,1963,2010,true,profitability
+Governance,"Gompers, Ishii and Metrick",QJE,2003,1990,1999,true,other
+GrAdExp,Lou,RFS,2014,1974,2010,true,investment alt
+GrLTNOA,"Fairfield, Whisenant and Yohn",AR,2003,1964,1993,false,investment
+GrSaleToGrInv,Abarbanell and Bushee,AR,1998,1974,1988,false,sales growth
+GrSaleToGrOverhead,Abarbanell and Bushee,AR,1998,1974,1988,false,sales growth
+Herf,Hou and Robinson,JF,2006,1963,2001,true,other
+HerfAsset,Hou and Robinson,JF,2006,1963,2001,false,other
+HerfBE,Hou and Robinson,JF,2006,1963,2001,true,other
+High52,George and Hwang,JF,2004,1963,2001,false,momentum
+IO_ShortInterest,Asquith Pathak and Ritter,JFE,2005,1980,2002,false,ownership
+IdioVol3F,Ang et al.,JF,2006,1963,2000,true,volatility
+IdioVolAHT,"Ali, Hwang, and Trombley",JFE,2003,1976,1997,true,volatility
+Illiquidity,Amihud,JFM,2002,1964,1997,true,liquidity
+IndIPO,Ritter,JF,1991,1975,1987,true,external financing
+IndMom,Grinblatt and Moskowitz,JF,1999,1963,1995,true,momentum
+IndRetBig,Hou,RFS,2007,1972,2001,true,lead lag
+IntMom,Novy-Marx,JFE,2012,1927,2010,true,momentum
+IntanBM,Daniel and Titman,JF,2006,1968,2003,true,long term reversal
+IntanCFP,Daniel and Titman,JF,2006,1968,2003,true,long term reversal
+IntanEP,Daniel and Titman,JF,2006,1968,2003,true,long term reversal
+IntanSP,Daniel and Titman,JF,2006,1968,2003,true,long term reversal
+InvGrowth,Belo and Lin,RFS,2012,1965,2009,true,profitability
+InvestPPEInv,"Lyandres, Sun and Zhang",RFS,2008,1970,2005,true,investment
+Investment,"Titman, Wei and Xie",JFQA,2004,1973,1996,true,investment
+LRreversal,De Bondt and Thaler,JF,1985,1929,1982,true,long term reversal
+Leverage,Bhandari,JF,1988,1952,1981,true,leverage
+MRreversal,De Bondt and Thaler,JF,1985,1933,1980,false,long term reversal
+MS,Mohanram,RAS,2005,1978,2001,true,composite accounting
+MaxRet,"Bali, Cakici, and Whitelaw",JFE,2011,1962,2005,true,volatility
+MeanRankRevGrowth,"Lakonishok, Shleifer, Vishny",JF,1994,1968,1990,true,sales growth
+Mom12m,Jegadeesh and Titman,JF,1993,1964,1989,true,momentum
+Mom12mOffSeason,Heston and Sadka,JFE,2008,1965,2002,true,other
+Mom6m,Jegadeesh and Titman,JF,1993,1964,1989,true,momentum
+Mom6mJunk,Avramov et al,JF,2007,1985,2003,true,momentum
+MomOffSeason,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomOffSeason06YrPlus,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomOffSeason11YrPlus,Heston and Sadka,JFE,2008,1965,2002,false,other
+MomOffSeason16YrPlus,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomRev,Chan and Ko,JOIM,2006,1965,2001,true,momentum
+MomSeason,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomSeason06YrPlus,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomSeason11YrPlus,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomSeason16YrPlus,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomSeasonShort,Heston and Sadka,JFE,2008,1965,2002,true,other
+MomVol,Lee and Swaminathan,JF,2000,1965,1995,true,momentum
+NOA,Hirshleifer et al.,JAE,2004,1964,2002,true,asset composition
+NetDebtFinance,"Bradshaw, Richardson, Sloan",JAE,2006,1971,2000,true,external financing
+NetDebtPrice,"Penman, Richardson and Tuna",JAR,2007,1963,2001,true,leverage
+NetEquityFinance,"Bradshaw, Richardson, Sloan",JAE,2006,1971,2000,true,external financing
+NetPayoutYield,Boudoukh et al.,JF,2007,1984,2003,true,valuation
+NumEarnIncrease,Loh and Warachka,MS,2012,1987,2009,false,earnings growth
+OPLeverage,Novy-Marx,ROF,2011,1963,2008,true,other
+OScore,Dichev,JF,1998,1981,1995,true,default risk
+OperProf,Fama and French,JFE,2006,1977,2003,false,profitability
+OperProfRD,Ball et al.,JFE,2016,1963,2014,false,profitability
+OptionVolume1,Johnson and So,JFE,2012,1996,2010,true,volume
+OptionVolume2,Johnson and So,JFE,2012,1996,2010,false,volume
+OrderBacklog,"Rajgopal, Shevlin, Venkatachalam",RAS,2003,1981,1999,true,sales growth
+OrderBacklogChg,Baik and Ahn,Other,2007,1971,1999,true,accruals
+OrgCap,Eisfeldt and Papanikolaou,JF,2013,1970,2008,true,R&D
+PS,Piotroski,JAR,2000,1976,1996,true,composite accounting
+PatentsRD,"Hirschleifer, Hsu and Li",JFE,2013,1982,2008,true,profitability alt
+PayoutYield,Boudoukh et al.,JF,2007,1984,2003,true,valuation
+PctAcc,"Hafzalla, Lundholm, Van Winkle",AR,2011,1989,2008,true,accruals
+PctTotAcc,"Hafzalla, Lundholm, Van Winkle",AR,2011,1989,2008,true,accruals
+PredictedFE,Frankel and Lee,JAE,1998,1979,1993,false,earnings forecast
+Price,Blume and Husic,JF,1973,1932,1971,true,other
+PriceDelayRsq,Hou and Moskowitz,RFS,2005,1964,2001,true,lead lag
+PriceDelaySlope,Hou and Moskowitz,RFS,2005,1964,2001,false,lead lag
+PriceDelayTstat,Hou and Moskowitz,RFS,2005,1964,2001,false,lead lag
+ProbInformedTrading,"Easley, Hvidkjaer and O'Hara",JF,2002,1984,1998,false,liquidity
+RD,"Chan, Lakonishok and Sougiannis",JF,2001,1975,1995,true,R&D
+RDAbility,"Cohen, Diether and Malloy",RFS,2013,1980,2009,true,other
+RDIPO,"Gou, Lev and Shi",JBFA,2006,1980,1995,true,R&D
+RDS,Landsman et al.,AR,2011,1976,2003,true,composite accounting
+RDcap,Li,RFS,2011,1980,2007,true,asset composition
+REV6,"Chan, Jegadeesh and Lakonishok",JF,1996,1977,1992,true,earnings forecast
+RIO_Disp,Nagel,JFE,2005,1980,2003,true,short sale constraints
+RIO_MB,Nagel,JFE,2005,1980,2003,true,short sale constraints
+RIO_Turnover,Nagel,JFE,2005,1980,2003,true,short sale constraints
+RIO_Volatility,Nagel,JFE,2005,1980,2003,true,short sale constraints
+RIVolSpread,Bali and Hovakimian,MS,2009,1996,2004,true,optionrisk
+RealizedVol,Ang et al.,JF,2006,1963,2000,true,volatility
+Recomm_ShortInterest,"Drake, Rees and Swanson",AR,2011,1994,2006,true,recommendation
+ResidualMomentum,"Blitz, Huij and Martens",JEmpFin,2011,1930,2009,true,momentum
+ReturnSkew,"Bali, Engle and Murray",Book,2015,1963,2012,true,risk
+ReturnSkew3F,"Bali, Engle and Murray",Book,2015,1963,2012,true,risk
+RevenueSurprise,Jegadeesh and Livnat,JAE,2006,1987,2003,true,sales growth
+RoE,Haugen and Baker,JFE,1996,1979,1993,false,profitability
+SP,"Barbee, Mukherji and Raines",FAJ,1996,1979,1991,false,valuation
+STreversal,Jegadeesh,JF,1990,1934,1987,true,short-term reversal
+ShareIss1Y,Pontiff and Woodgate,JF,2008,1970,2003,true,external financing
+ShareIss5Y,Daniel and Titman,JF,2006,1968,2003,true,external financing
+ShareRepurchase,"Ikenberry, Lakonishok, Vermaelen",JFE,1995,1980,1990,false,payout indicator
+ShareVol,"Datar, Naik and Radcliffe",JFM,1998,1962,1991,true,volume
+ShortInterest,Dechow et al.,JFE,2001,1976,1993,false,short sale constraints
+Size,Banz,JFE,1981,1926,1975,true,size
+SmileSlope,Yan,JFE,2011,1996,2005,true,optionrisk
+Spinoff,"Cusatis, Miles and Woolridge",JFE,1993,1965,1988,false,other
+SurpriseRD,"Eberhart, Maxwell and Siddique",JF,2004,1974,2001,true,R&D
+Tax,Lev and Nissim,AR,2004,1973,2000,true,other
+TotalAccruals,Richardson et al.,JAE,2005,1962,2001,true,investment alt
+TrendFactor,"Han, Zhou, Zhu",JFE,2016,1930,2014,true,momentum
+UpRecomm,Barber et al.,JF,2001,1985,1997,false,earnings forecast
+VarCF,Haugen and Baker,JFE,1996,1979,1993,false,cash flow risk
+VolMkt,Haugen and Baker,JFE,1996,1979,1993,false,volume
+VolSD,"Chordia, Subra, Anshuman",JFE,2001,1966,1995,true,liquidity
+VolumeTrend,Haugen and Baker,JFE,1996,1979,1993,false,volume
+XFIN,"Bradshaw, Richardson, Sloan",JAE,2006,1971,2000,true,external financing
+betaVIX,Ang et al.,JF,2006,1986,2000,true,volatility
+cfp,"Desai, Rajgopal, Venkatachalam",AR,2004,1973,1997,true,valuation
+dCPVolSpread,"An, Ang, Bali, Cakici",JF,2014,1996,2011,true,informed trading
+dNoa,"Hirshleifer, Hou, Teoh, Zhang",JAE,2004,1964,2002,true,investment
+dVolCall,"An, Ang, Bali, Cakici",JF,2014,1996,2011,true,informed trading
+dVolPut,"An, Ang, Bali, Cakici",JF,2014,1996,2011,false,informed trading
+fgr5yrLag,La Porta,JF,1996,1983,1990,true,earnings forecast
+grcapx,Anderson and Garcia-Feijoo,JF,2006,1976,1999,true,investment growth
+grcapx3y,Anderson and Garcia-Feijoo,JF,2006,1976,1999,true,investment growth
+hire,"Bazdresch, Belo and Lin",JPE,2014,1965,2010,true,investment alt
+iomom_cust,Menzly and Ozbas,JF,2010,1986,2005,false,lead lag
+iomom_supp,Menzly and Ozbas,JF,2010,1986,2005,false,lead lag
+realestate,Tuzel,RFS,2010,1971,2005,false,asset composition
+retConglomerate,Cohen and Lou,JFE,2012,1977,2009,true,lead lag
+roaq,"Balakrishnan, Bartov and Faurel",JAE,2010,1976,2005,true,profitability
+sfe,"Elgers, Lo and Pfeiffer",AR,2001,1982,1998,true,valuation
+sinAlgo,Hong and Kacperczyk,JFE,2009,1926,2006,false,other
+skew1,"Xing, Zhang and Zhao",JFQA,2010,1996,2005,false,optionrisk
+std_turn,"Chordia, Subra, Anshuman",JFE,2001,1966,1995,true,liquidity
+tang,Hahn and Lee,JF,2009,1973,2001,true,asset composition
+zerotrade12M,Liu,JFE,2006,1960,2003,true,liquidity
+zerotrade1M,Liu,JFE,2006,1960,2003,true,liquidity
+zerotrade6M,Liu,JFE,2006,1960,2003,true,liquidity

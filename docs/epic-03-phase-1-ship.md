@@ -84,8 +84,9 @@ no `quarto publish gh-pages`: the deployment is an artifact built from the tagge
 committed results.
 
 #107 pins `astral-sh/setup-uv` to `v10.3.0` in this workflow too. The first version used `@v10`,
-which does not exist (the action publishes release tags only), so the workflow failed during setup
-rather than in the build. The same correction was needed in `ci.yml` for the hosted switch.
+which the action does not publish (only release tags exist), so a job that references it fails
+while the workflow is being set up, before any build step. The hosted-CI run of #106 hit exactly
+that failure, and #107 applied the same pin to the Pages workflow before it first ran.
 
 The first release deployment was rejected by the `github-pages` environment: the environment that
 GitHub creates automatically allows deployments from branches only, and a release workflow checks

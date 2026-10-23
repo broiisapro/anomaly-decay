@@ -32,8 +32,8 @@ jobs:
           version: "1.10.19"
       - uses: actions/configure-pages@v6
       - run: uv sync --frozen
-      - name: Render the report from committed results
-        run: make report
+      - name: Build the site from committed results
+        run: make site
       - uses: actions/upload-pages-artifact@v5
         with:
           path: report/_site

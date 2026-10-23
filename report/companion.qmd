@@ -1,0 +1,9 @@
+---
+title: "Explore a predictor"
+toc: false
+format: html
+---
+
+The interactive companion page arrives in this release. It will show each predictor's
+in-sample, post-sample and post-publication long-short returns and its event-year profile,
+computed from the committed results.

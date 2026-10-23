@@ -1,0 +1,6 @@
+---
+title: "RA memo"
+format: typst
+---
+
+The two-page RA memo arrives in this release.

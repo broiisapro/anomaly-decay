@@ -290,7 +290,7 @@ request.
   object syntax, which is what the byte counter reads. If a later Typst compresses objects,
   the page-tree cross-check fails first and the counter must be updated rather than silently
   undercounting.
-- **v1.0.1 polish shipped in the same wave.** The report's forced page breaks, table headers and
+- **v1.0.1 polish shipped alongside this work.** The report's forced page breaks, table headers and
   dead `reporting.py` fallback were fixed under #117, and the report now links the companion and
   memo (#123). That polish is part of the site as it ships, but it is documented in the Epic 03
   write-up and the report's own pull request, not here.

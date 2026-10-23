@@ -1,7 +1,17 @@
 ---
 title: "anomaly-decay — post-sample and post-publication decay of anomaly returns"
-subtitle: "A replication of McLean & Pontiff (2016) on Chen–Zimmermann OSAP portfolios"
+subtitle: |
+  A replication of McLean & Pontiff (2016) on\
+  Chen–Zimmermann portfolios
 ---
+
+```{=typst}
+// Keep table headers and labels on word boundaries: hyphenated fragments are hard to read in
+// the narrow columns, and identifiers such as post_publication are unbreakable anyway. Table
+// cells are left-aligned so a short label does not stretch across the column.
+#set text(hyphenate: false)
+#show table.cell: set par(justify: false)
+```
 
 ```{python}
 #| echo: false
@@ -35,7 +45,23 @@ FRENCH_DOWNLOADED_ON = DATA_CONFIG.get("french", {}).get("downloaded_on")
 
 SPECS = reporting.specifications()
 SPEC_ORDER = [spec.id for spec in SPECS]
-SPEC_LABELS = {spec.id: spec.label for spec in SPECS}
+# Short labels for the grouped table column: the pre-registered label shown in the appendix
+# is too long for a narrow first column and breaks mid-word in the PDF. The appendix keeps
+# the full label from `config/specifications.yaml`.
+SPEC_SHORT_LABELS = {
+    "main": "Main sample",
+    "main_twoway": "Two-way clustered SE",
+    "main_dk": "Driscoll–Kraay SE",
+    "pubconv_alt": "Publication-year convention",
+    "start_1963": "Later sample start",
+    "clear_only": "Clear predictors only",
+    "ew_deciles": "Equal-weighted deciles",
+    "vw_deciles": "Value-weighted deciles",
+    "factor_adj": "Factor-adjusted returns",
+    "normalized": "Normalized returns",
+    "full_extension": "Full extension",
+    "ext_pub_after_2000": "Published after 2000",
+}
 TERM_ORDER = reporting.TERM_ORDER
 
 main = reporting.load_optional("main.csv")
@@ -252,6 +278,13 @@ reporting.figure_block(
 )
 ```
 
+# Explore and summary
+
+Two companion pages go with this report. The [interactive companion](companion.html) lets you pick
+a predictor and compare its in-sample, post-sample and post-publication long-short returns with its
+event-year profile, all read from the same committed results. The [RA memo](memo.pdf) is a
+two-page summary of the design, the headline numbers and the main caveats.
+
 # Data
 
 Portfolio returns are the OSAP long-short series (`port == "LS"`) for every signal documented as
@@ -360,7 +393,7 @@ status.
 # Main result vs the original paper
 
 ```{python}
-#| tbl-colwidths: [40, 30, 30]
+#| tbl-colwidths: [48, 26, 26]
 def paper_coef_se_cell(term: str) -> str:
     coef, se = paper_term(term, "coef"), paper_term(term, "se")
     if coef is None or se is None:
@@ -434,7 +467,7 @@ comparison_rows_view
 ```
 
 ```{python}
-#| tbl-colwidths: [15, 22, 14, 10, 21, 18]
+#| tbl-colwidths: [18, 22, 13, 9, 18, 20]
 decay_view = (
     reporting.ordered(
         decay.select("method", "term", "decay_pct", "se_pct", "in_sample_mean", "n_predictors"),
@@ -539,13 +572,13 @@ shows each row's post-sample and post-publication coefficient with a 95% confide
 interval.
 
 ```{python}
-#| tbl-colwidths: [28, 22, 11, 9, 8, 10, 12]
+#| tbl-colwidths: [30, 20, 11, 9, 8, 11, 11]
 robustness_view = render_table(
     reporting.ordered(robustness, {"spec": SPEC_ORDER, "term": TERM_ORDER})
     if robustness is not None
     else None,
     ["spec", "term", "coef", "se", "t", "n_predictors", "n_obs"],
-    ["Specification", "Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
+    ["Spec", "Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
     formats={
         "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
@@ -556,7 +589,7 @@ robustness_view = render_table(
     },
     missing="`robustness.csv` has not been produced yet; the robustness table renders here after the estimation stage runs.",
     group="spec",
-    labels=SPEC_LABELS,
+    labels=SPEC_SHORT_LABELS,
 )
 robustness_view
 ```
@@ -568,10 +601,6 @@ reporting.figure_block(
 )
 ```
 
-```{=typst}
-#pagebreak(weak: true)
-```
-
 # Extension
 
 The extension reruns the main specification on every predictor through the pinned
@@ -580,13 +609,13 @@ vintage's last month and splits the post-publication shift by publication era (t
 across later and earlier literature.
 
 ```{python}
-#| tbl-colwidths: [28, 22, 11, 9, 8, 10, 12]
+#| tbl-colwidths: [30, 20, 11, 9, 8, 11, 11]
 extension_view = render_table(
     reporting.ordered(extension, {"spec": SPEC_ORDER, "term": TERM_ORDER})
     if extension is not None
     else None,
     ["spec", "term", "coef", "se", "t", "n_predictors", "n_obs"],
-    ["Specification", "Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
+    ["Spec", "Term", "Coef (%/mo)", "SE", "t", "N pred.", "N obs"],
     formats={
         "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
@@ -597,7 +626,7 @@ extension_view = render_table(
     },
     missing="`extension.csv` has not been produced yet; the extension table renders here after the estimation stage runs.",
     group="spec",
-    labels=SPEC_LABELS,
+    labels=SPEC_SHORT_LABELS,
 )
 extension_view
 ```
@@ -642,7 +671,7 @@ pre-registration marks the analysis
 `{python} reporting.exploratory_label(P2_BOOTSTRAP.get("exploratory"))`.
 
 ```{python}
-#| tbl-colwidths: [24, 24, 12, 15, 13, 12]
+#| tbl-colwidths: [16, 40, 12, 12, 10, 10]
 BOOTSTRAP_ORDER = P2_BOOTSTRAP.get("statistics") or []
 BOOTSTRAP_LABELS = {
     "coef_post_sample": "Post-sample coefficient",
@@ -655,7 +684,7 @@ bootstrap_view = render_table(
     if bootstrap is not None
     else None,
     ["spec", "statistic", "estimate", "boot_se", "ci_low", "ci_high"],
-    ["Specification", "Statistic", "Estimate", "Bootstrap SE", "Interval low", "Interval high"],
+    ["Spec", "Statistic", "Estimate", "Boot SE", "Low", "High"],
     formats={
         "statistic": lambda value: BOOTSTRAP_LABELS.get(str(value), str(value)),
         **{
@@ -665,7 +694,7 @@ bootstrap_view = render_table(
     },
     missing="`bootstrap.csv` has not been produced yet; the pre-registered bootstrap intervals render here after the Phase 2 run.",
     group="spec",
-    labels={"bootstrap_main": "Bootstrap of the main specification"},
+    labels={"bootstrap_main": "Main"},
 )
 bootstrap_view
 ```
@@ -676,10 +705,6 @@ The `spec` column names the resampled specification, and the file's `reps`, `blo
 `seed` columns record the run parameters. The intervals answer how much of the headline decay
 estimate is sampling noise under the pre-registered block scheme, not how the estimate was
 selected.
-
-```{=typst}
-#pagebreak(weak: true)
-```
 
 # Phase 2: Multiple-testing lens
 
@@ -693,7 +718,7 @@ the results file), and the t statistic of the `op` long-short return over the pr
 in-sample months, computed from the same data as this replication (`in_sample_replicated`).
 
 ```{python}
-#| tbl-colwidths: [26, 13, 13, 17, 16, 15]
+#| tbl-colwidths: [30, 13, 13, 16, 15, 13]
 TSTAT_ORDER = list((P2_MT.get("tstat_sources") or {}).keys())
 TSTAT_LABELS = {
     "original_paper": "Original paper",
@@ -704,7 +729,7 @@ tstat_summary_view = render_table(
     if tstat_summary is not None
     else None,
     ["tstat_source", "n_predictors", "n_missing", "n_below_hurdle", "median_t", "hurdle_t"],
-    ["T-statistic source", "Predictors", "Missing t", "Below hurdle", "Median t", "Hurdle"],
+    ["Source", "N pred.", "Missing", "Below hurdle", "Median t", "Hurdle"],
     formats={
         "tstat_source": lambda value: TSTAT_LABELS.get(str(value), str(value)),
         "n_predictors": reporting.count,
@@ -719,19 +744,19 @@ tstat_summary_view
 ```
 
 ```{python}
-#| tbl-colwidths: [28, 22, 11, 9, 8, 10, 12]
+#| tbl-colwidths: [25, 28, 10, 9, 8, 10, 10]
 MT_ORDER = [entry.get("id") for entry in (P2_MT.get("specs") or [])]
 MT_LABELS = {
-    "mt_weak_original": "Weak split, original-paper t-statistic",
-    "mt_weak_replicated": "Weak split, replicated t-statistic",
-    "mt_tstat_continuous": "Continuous interaction (McLean–Pontiff Table II col. 4)",
+    "mt_weak_original": "Weak split, original t",
+    "mt_weak_replicated": "Weak split, replicated t",
+    "mt_tstat_continuous": "Continuous t interaction",
 }
 multiple_testing_view = render_table(
     reporting.ordered(multiple_testing, {"spec": MT_ORDER, "term": TERM_ORDER})
     if multiple_testing is not None
     else None,
     ["spec", "term", "coef", "se", "t", "n_weak", "n_excluded_missing_t"],
-    ["Specification", "Term", "Coef (%/mo)", "SE", "t", "Weak pred.", "Excluded (missing t)"],
+    ["Spec", "Term", "Coef (%/mo)", "SE", "t", "N weak", "Excluded"],
     formats={
         "term": reporting.term_label,
         "coef": lambda value: reporting.num(value, 3),
@@ -829,7 +854,7 @@ The pre-registered preference order for the comparison release is
 validation.
 
 ```{python}
-#| tbl-colwidths: [15, 11, 21, 10, 8, 10, 12, 13]
+#| tbl-colwidths: [16, 11, 21, 11, 8, 10, 11, 12]
 VINTAGE_ORDER = [
     P2_VINTAGES.get("primary"),
     *(P2_VINTAGES.get("compare_preference") or []),
@@ -981,7 +1006,7 @@ The pre-registration lists every specification that is run, including any that f
 status and whether it is confirmatory (pre-registered) or exploratory.
 
 ```{python}
-#| tbl-colwidths: [22, 32, 10, 36]
+#| tbl-colwidths: [20, 40, 8, 32]
 specs_view = render_table(
     reporting.ordered(specs_run, {"spec": SPEC_ORDER}) if specs_run is not None else None,
     ["spec", "label", "status", "exploratory"],
@@ -998,7 +1023,7 @@ analysis with its results file and whether that file is present in this render; 
 items, if any, are labelled.
 
 ```{python}
-#| tbl-colwidths: [14, 24, 28, 12, 22]
+#| tbl-colwidths: [17, 23, 26, 10, 24]
 phase2_entries = []
 if PHASE2 is not None:
     phase2_entries.append(
@@ -1054,3 +1079,10 @@ phase2_view = render_table(
 )
 phase2_view
 ```
+
+Every Phase 2 analysis in this release is confirmatory: `config/phase2_preregistration.yaml` was
+frozen with the Phase 1 specifications by the `specs-frozen` tag before the first full-data
+estimation, and a row reads *present* when its results file was available for this render. No
+analysis is labelled exploratory; one added after the freeze would carry that label in the table
+and in its own section.
+
